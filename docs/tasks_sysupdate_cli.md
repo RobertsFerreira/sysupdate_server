@@ -696,7 +696,7 @@ A partir da v1.0, o state file é assinado junto ao manifest. O CLI rejeita stat
 
 ---
 
-### Módulo: Server — Storage
+### Módulo: Server — Storage (PT.1)
 
 ---
 
@@ -862,7 +862,7 @@ Cifrar o manifest com AES-256-GCM. A chave AES é gerada por pacote e cifrada co
 
 ---
 
-### Módulo: CLI — Core
+### Módulo: CLI — Core (PT.1)
 
 ---
 
@@ -885,4 +885,4 @@ Otimizar o download do bundle para suportar conexões lentas e bundles grandes, 
 
 ---
 
-*Fim do documento — 39 tasks geradas a partir do PDR_SysUpdate_CLI.md*
+Fim do documento — 39 tasks geradas a partir do PDR_SysUpdate_CLI.md
