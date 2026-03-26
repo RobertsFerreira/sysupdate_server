@@ -96,15 +96,15 @@ Criar e inicializar o banco de dados SQLite do servidor com as tabelas `releases
 
 **Critérios de Aceite:**
 
-- [ ] Banco criado em `data/sysupdate.db` na primeira inicialização do servidor
-- [ ] Tabela `releases` criada com colunas: `id`, `version` (UNIQUE), `description`, `min_version`, `bundle_file`, `bundle_checksum`, `release_date`, `created_at`
-- [ ] Tabela `release_files` criada com colunas: `id`, `release_id` (FK → releases), `target`, `checksum`
-- [ ] Função `insertRelease(data)` implementada em `db/releases.ts`
-- [ ] Função `getLatestRelease()` implementada — retorna a release com maior versão semver
-- [ ] Função `getReleaseByVersion(version)` implementada — retorna release específica ou `null`
-- [ ] Função `getReleaseFiles(releaseId)` implementada — retorna array de arquivos da release
-- [ ] Banco recriado corretamente se `data/sysupdate.db` não existir
-- [ ] `data/sysupdate.db` está no `.gitignore`
+- [X] Banco criado em `data/sysupdate.db` na primeira inicialização do servidor
+- [X] Tabela `releases` criada com colunas: `id`, `version` (UNIQUE), `description`, `min_version`, `bundle_file`, `bundle_checksum`, `release_date`, `created_at`
+- [X] Tabela `release_files` criada com colunas: `id`, `release_id` (FK → releases), `target`, `checksum`
+- [X] Função `insertRelease(data)` implementada em `db/releases.ts`
+- [X] Função `getLatestRelease()` implementada — retorna a release com maior versão semver
+- [X] Função `getReleaseByVersion(version)` implementada — retorna release específica ou `null`
+- [X] Função `getReleaseFiles(releaseId)` implementada — retorna array de arquivos da release
+- [X] Banco recriado corretamente se `data/sysupdate.db` não existir
+- [X] `data/sysupdate.db` está no `.gitignore`
 
 ---
 
