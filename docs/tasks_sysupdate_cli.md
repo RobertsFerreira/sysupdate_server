@@ -78,7 +78,7 @@ Criar os arquivos e diretórios base do servidor conforme definido no PDR: `rout
 - [X] Arquivos stub criados: `schema.ts`, `releases.ts` em `db/`
 - [X] Arquivos stub criados: `ftp.ts`, `s3.ts` em `storage/`
 - [X] `main.ts` criado e sobe servidor HTTP na porta configurada
-- [X] `.env.example` documentado com: `SERVER_PORT`, `JWT_SECRET`, `AUTH_SECRET`, `STORAGE_PROVIDER`, `STORAGE_HOST`, `STORAGE_USER`, `STORAGE_PASSWORD`, `STORAGE_BASE_PATH`
+- [X] `.env.example` documentado com: `SERVER_PORT`, `JWT_SECRET`, `AUTH_SECRET`, `TOKEN_TTL`, `STORAGE_PROVIDER`, `STORAGE_HOST`, `STORAGE_USER`, `STORAGE_PASSWORD`, `STORAGE_BASE_PATH`
 - [X] `GET /health` responde `200 OK` com `{ "status": "ok" }`
 
 ---
@@ -117,16 +117,19 @@ Criar e inicializar o banco de dados SQLite do servidor com as tabelas `releases
 **Módulo:** Server / Auth
 
 **Descrição:**
-Implementar a rota `POST /auth/token` que gera o JWT do publisher mediante apresentação do `AUTH_SECRET`. Implementar o middleware JWT que valida o token nas rotas protegidas. O JWT não tem expiração definida — é revogado manualmente.
+Implementar a rota `POST /auth/token` que gera o JWT do publisher mediante apresentação do `AUTH_SECRET`. Implementar o middleware JWT que valida o token nas rotas protegidas. O JWT segue o padrão RFC 7519 com algoritmo HS256 e expira em 1 hora por padrão (configurável via `TOKEN_TTL` no `.env`). O publisher gera o token imediatamente antes de cada push, usa e descarta.
 
 **Critérios de Aceite:**
 
 - [ ] `POST /auth/token` com `{ "secret": "..." }` correto retorna `{ "token": "eyJ..." }` com status `200`
 - [ ] `POST /auth/token` com secret incorreto retorna `401`
 - [ ] `POST /auth/token` sem body retorna `400`
+- [ ] JWT gerado com HS256 contém payload: `sub: "publisher"`, `permissions: ["publish"]`, `iat`, `exp` (iat + TOKEN_TTL)
+- [ ] `TOKEN_TTL` lido do `.env` — padrão `3600` (1 hora) se ausente
 - [ ] Middleware `jwt.ts` valida o header `Authorization: Bearer <token>`
+- [ ] Middleware verifica assinatura, expiração (`exp`) e `permissions: ["publish"]`
 - [ ] Requisição sem token para rota protegida retorna `401`
-- [ ] Requisição com token inválido/expirado retorna `401`
+- [ ] Requisição com token inválido ou expirado retorna `401`
 - [ ] `JWT_SECRET` e `AUTH_SECRET` lidos do `.env` — erro claro se ausentes na inicialização
 - [ ] JWT gerado é stateless (validado apenas pelo `JWT_SECRET`, sem estado no servidor)
 
@@ -298,7 +301,7 @@ Implementar o fluxo completo do `pull`: buscar manifest, validar versão, baixar
 - [ ] Extrai bundle no diretório temporário
 - [ ] Para cada arquivo: compara checksum local do target com checksum do manifest — se igual, marca como "pulado"; se diferente ou ausente, copia arquivo para o target
 - [ ] Verifica permissão de escrita em todos os targets antes de iniciar qualquer download
-- [ ] Atualiza state file com nova versão após todas as substituições
+- [ ] Atualiza state file com nova versão após todas as substituições — entrada do histórico inclui `files[]` (substituídos) e `skipped[]` (checksum igual)
 - [ ] Remove diretório temporário ao final (sucesso ou falha)
 - [ ] Exibe relatório final: arquivos atualizados, pulados
 - [ ] `sysupdate pull --version 2.3.0` aplica versão específica
@@ -344,7 +347,7 @@ Implementar `core/state.ts` com leitura e escrita do state file `.sysupdate-stat
 
 - [ ] `readState(): State | null` — lê e parseia o state file; retorna `null` se não existir (primeira instalação)
 - [ ] `writeState(state: State): void` — escreve o state file de forma atômica (write em tmp → rename)
-- [ ] Tipo TypeScript `State` exportado com campos: `installedVersion`, `lastApplied`, `history[]`
+- [ ] Tipo TypeScript `State` exportado com campos: `installedVersion`, `lastApplied`, `history[]` — cada entrada do histórico contém `version`, `appliedAt`, `files[]` e `skipped[]`
 - [ ] State file criado em `.sysupdate-state.json` no diretório de trabalho do CLI
 - [ ] Escrita atômica: usa arquivo temporário + rename para evitar state file corrompido em caso de crash
 - [ ] Erro claro se o state file existir mas estiver corrompido (JSON inválido)
@@ -397,7 +400,7 @@ Integrar o Backup Manager no fluxo do pull (TASK-013). O backup deve ocorrer ap�
 - [ ] Se a criação do snapshot falhar, o pull aborta sem substituir nenhum arquivo
 - [ ] `--no-backup` pula a criação do snapshot (sem refatoração do fluxo principal)
 - [ ] Relatório final exibe: arquivos atualizados, pulados e caminho do snapshot criado
-- [ ] State file é atualizado com referência ao snapshot da versão
+- [ ] State file é atualizado com referência ao snapshot da versão, incluindo listas `files[]` (atualizados) e `skipped[]` (pulados por checksum igual)
 
 ---
 
@@ -885,4 +888,4 @@ Otimizar o download do bundle para suportar conexões lentas e bundles grandes, 
 
 ---
 
-Fim do documento — 39 tasks geradas a partir do PDR_SysUpdate_CLI.md
+*Fim do documento — 39 tasks | Última revisão: Março / 2026 — sincronizado com PDR_SysUpdate_CLI.md*

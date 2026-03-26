@@ -1,9 +1,9 @@
-# SysUpdate CLI — PDR
+# SysUpdate CLI — PRD
 
 > Ferramenta de Atualização de Sistemas com Backup e Rollback de Arquivos
 
 | Campo | Valor |
-| --- | --- |
+|---|---|
 | Versão atual | Alpha — sem assinatura |
 | Data | Março / 2026 |
 | Stack | Bun · TypeScript · FTP / S3 (MinIO) |
@@ -32,7 +32,7 @@ O SysUpdate CLI é uma ferramenta de linha de comando desenvolvida em Bun + Type
 A segurança é adicionada de forma incremental após validação do fluxo base:
 
 | Fase | Segurança | Detalhe |
-| --- | --- | --- |
+|---|---|---|
 | Alpha | Nenhuma | Fluxo completo sem assinatura. Manifest e arquivos em texto claro. Foco em validar o fluxo. |
 | v1.0 | Assinatura Ed25519 | Manifest e arquivos assinados. CLI verifica antes de qualquer operação. Chave pública embutida no EXE. |
 | v2.0 | Criptografia do manifest | Manifest cifrado com X25519 + AES-256-GCM. Leitura indevida do manifest passa a ser impossível. |
@@ -46,15 +46,13 @@ A segurança é adicionada de forma incremental após validação do fluxo base:
 A ferramenta é organizada em camadas bem definidas para permitir extensibilidade de provedores de storage e adição futura de camadas de segurança sem impacto no Core Engine.
 
 | Camada | Responsabilidade | Tecnologia |
-| --- | --- | --- |
+|---|---|---|
 | CLI / Commands | Parsing de argumentos, roteamento de subcomandos | Bun + citty |
 | Core Engine | Orquestração: backup, download, checksum, substituição | TypeScript puro |
 | Security Layer | `verifyManifest()` e `verifyFile()` — stub na Alpha, real na v1 | WebCrypto (Ed25519) |
-| Storage Adapter | Abstração de FTP e S3/MinIO via interface comum | basic-ftp · aws-sdk v3 |
 | Backup Manager | Cópia versionada dos arquivos antes de sobrescrever | fs nativo + zlib |
 | State Manager | Persiste histórico de versões aplicadas em JSON local | fs nativo |
-| Manifest | Parse, validação JSON Schema e verificação de versão | JSON Schema + ajv |
-| **Server** | **Proxy HTTP entre cliente e storage — autentica push via JWT** | **Bun HTTP** |
+| **Server** | **Proxy HTTP entre cliente e storage — armazena metadados no SQLite, autentica push via JWT** | **Bun HTTP** |
 | Build | Compilação para EXE standalone e DLL | bun build --compile |
 
 ### 2.1 Fluxo: pull (cliente aplica update)
@@ -91,7 +89,7 @@ O `sysupdate.json` é um arquivo local da máquina do publisher — nunca é pub
 > ⚠ O `sysupdate.json` fica no repositório do projeto do publisher junto com o código. Nunca vai para o servidor de updates.
 
 | Campo | Tipo | Descrição |
-| --- | --- | --- |
+|---|---|---|
 | `version` | string | Versão semver do pacote (ex: 2.4.1) |
 | `releaseDate` | string | Data ISO 8601 do pacote |
 | `description` | string | Descrição legível do update |
@@ -131,16 +129,14 @@ O state file é um JSON local (`.sysupdate-state.json`) que registra o históric
 O pull tem dois níveis de validação — bundle e arquivo individual:
 
 **Nível 1 — bundle completo:**
-
-```js
+```
 sha256(release-2.4.1.zip) == resposta.bundle.checksum?
   sim → extrai e processa
   não → descarta, aborta (download corrompido ou adulterado)
 ```
 
 **Nível 2 — por arquivo após extração:**
-
-```js
+```
 resposta.files[i].target   = 'C:/SistemaX/app.exe'
 resposta.files[i].checksum = 'e3b0c44...'
 
@@ -151,15 +147,15 @@ sha256('C:/SistemaX/app.exe') == 'e3b0c44...'?
 ```
 
 | Momento | Comparação | Resultado |
-| --- | --- | --- |
+|---|---|---|
 | Após baixar o bundle | sha256 do bundle vs checksum retornado pelo servidor | Iguais → extrai. Diferentes → aborta. |
 | Após extrair, antes de substituir | sha256 do arquivo local (via target) vs checksum do arquivo | Iguais → pula. Diferentes ou ausente → substitui. |
 
 ### 4.2 Proteção contra Rollback Malicioso
 
-O CLI nunca aceita um manifest com versão menor ou igual à versão já registrada no state file. Isso impede que alguém coloque um manifest antigo no storage para forçar uma versão anterior:
+O CLI nunca aceita uma resposta do servidor com versão menor ou igual à versão já registrada no state file. Isso impede que alguém publique uma versão antiga no servidor para forçar um downgrade:
 
-```js
+```
 versão do manifest (2.3.0) <= versão instalada (2.4.1)
   → aborta: 'Manifest desatualizado. Versão instalada (2.4.1)
     é igual ou superior ao manifest'
@@ -210,7 +206,7 @@ O próprio executável do CLI pode ser incluído no bundle como qualquer outro a
 
 Como o Windows não permite deletar um EXE em execução mas permite renomeá-lo, o pull renomeia o executável atual para `.bak` antes de copiar o novo:
 
-```js
+```
 pull detecta target == executável em execução
   → renomeia sysupdate.exe → sysupdate.exe.bak   (Windows permite)
   → copia o novo sysupdate.exe para o lugar
@@ -230,7 +226,7 @@ cleanupSelfBackup().catch(err => log.warn('backup cleanup failed', err))
 await runCommand(args)
 ```
 
-```js
+```
 cleanupSelfBackup():
   → verifica se existe sysupdate.exe.bak no mesmo diretório
   → existe → move para .sysupdate-backups/v{versão_anterior}/files/
@@ -243,7 +239,7 @@ Se a limpeza falhar, só emite um warning — nunca interrompe o comando princip
 
 Antes de qualquer substituição, o Backup Manager cria um snapshot versionado com timestamp. Os backups ficam em uma pasta oculta no diretório de trabalho do CLI:
 
-```js
+```
 .sysupdate-backups/
   ├── v2.4.1_2026-03-21T14-32-10/
   │     ├── manifest.json              (cópia do manifest aplicado)
@@ -266,7 +262,7 @@ Antes de qualquer substituição, o Backup Manager cria um snapshot versionado c
 O rollback restaura o sistema para o estado do snapshot imediatamente anterior. É atômico — o state file só é atualizado após todos os arquivos serem restaurados com sucesso.
 
 | # | Etapa | Detalhe |
-| --- | --- | --- |
+|---|---|---|
 | 1 | Identificar snapshot | Lê state file e localiza o snapshot da versão anterior (ou da versão alvo com `--to`) |
 | 2 | Validar snapshot | Confirma que os arquivos `.bak` existem e seus checksums batem com o manifest do snapshot |
 | 3 | Restaurar arquivos | Copia cada `.bak` de volta para o caminho original registrado no manifest do snapshot |
@@ -284,7 +280,7 @@ O servidor é um proxy HTTP em Bun que fica entre o cliente e o storage (FTP/S3)
 ### 6.1 Rotas
 
 | Método | Rota | Auth | Descrição |
-| --- | --- | --- | --- |
+|---|---|---|---|
 | `GET` | `/manifest/latest` | Nenhuma | Retorna os metadados da versão mais recente. |
 | `GET` | `/manifest/:version` | Nenhuma | Retorna os metadados de uma versão específica. |
 | `GET` | `/bundle/:version` | Nenhuma | Stream do bundle `.zip` da versão solicitada. |
@@ -345,27 +341,50 @@ O servidor monta o JSON dinamicamente a partir do SQLite — sem arquivo estáti
 
 ### 6.4 Autenticação JWT do Publisher
 
-O JWT do publisher é gerado uma única vez via chamada HTTP direta — sem subcomando no CLI. O publisher faz a chamada manualmente ou via script na configuração inicial do servidor:
+O JWT segue o padrão RFC 7519 com algoritmo HS256. É gerado via chamada HTTP direta — sem subcomando no CLI. O publisher gera o token imediatamente antes de cada push, usa e descarta. O token expira em 1 hora.
 
-```js
+**Geração do token:**
+
+```
 POST /auth/token
   Content-Type: application/json
   { "secret": "<AUTH_SECRET definido no .env do servidor>" }
 
-  → { "token": "eyJhbGc..." }
+  → servidor valida o secret
+  → gera JWT assinado com HS256:
+    {
+      "sub":         "publisher",
+      "permissions": ["publish"],
+      "iat":         1711025400,
+      "exp":         1711029000   ← iat + 3600 (1 hora)
+    }
+  → retorna { "token": "eyJhbGc..." }
 ```
 
-O `AUTH_SECRET` é uma senha configurada no `.env` do servidor — só quem administra o servidor tem acesso. O JWT retornado é salvo no `.env` do publisher e usado em todas as operações de escrita:
+**Uso nas rotas protegidas:**
 
-```js
-Authorization: Bearer <jwt_publisher>
 ```
+POST /publish
+  Authorization: Bearer eyJhbGc...
+```
+
+**Validação no servidor a cada requisição:**
+
+```
+→ decodifica o JWT
+→ verifica assinatura com JWT_SECRET
+→ verifica expiração (exp)
+→ verifica permissions: ["publish"]
+→ libera ou rejeita com 401
+```
+
+O `AUTH_SECRET` protege a geração do token — só quem administra o servidor sabe. O `JWT_SECRET` assina e verifica os tokens — nunca exposto externamente. O token expira em 1 hora por padrão, configurável via `TOKEN_TTL` no `.env` do servidor.
 
 O cliente nunca precisa de token — as rotas de leitura são públicas.
 
 ### 6.5 Estrutura do Servidor
 
-```js
+```
 sysupdate-server/
   ├── src/
   │   ├── routes/
@@ -389,10 +408,11 @@ sysupdate-server/
 
 ### 6.6 Configuração do Servidor
 
-```env
+```
 SERVER_PORT=3000
 JWT_SECRET=xxxx
 AUTH_SECRET=xxxx
+TOKEN_TTL=3600
 STORAGE_PROVIDER=ftp
 STORAGE_HOST=ftp.interno.com
 STORAGE_USER=admin
@@ -425,9 +445,9 @@ interface SecurityLayer {
 ### 7.2 Roadmap de Segurança
 
 | Fase | Mecanismo | Detalhe |
-| --- | --- | --- |
+|---|---|---|
 | Alpha | Nenhum | `verifyManifest()` e `verifyFile()` sempre retornam true. `signManifest()` e `signFile()` retornam buffer vazio. Sem `.sig` no storage. |
-| v1.0 | Ed25519 — assinatura | Publisher assina manifest e cada arquivo com chave privada. CLI verifica com chave pública embutida no EXE. Arquivos `.sig` publicados junto no storage. |
+| v1.0 | Ed25519 — assinatura | Publisher assina o bundle com chave privada. CLI verifica com chave pública embutida no EXE. Arquivos `.sig` publicados no servidor junto com o bundle. |
 | v1.0 | Proteção do state file | State file assinado junto com o manifest. CLI rejeita state file com versão manipulada. |
 | v1.1 | Code signing do EXE | `sysupdate.exe` assinado com certificado Authenticode. SO valida antes de executar. |
 | v2.0 | X25519 + AES-256-GCM | Manifest cifrado. Chave AES gerada por pacote, cifrada com X25519 (chave pública do CLI embutida). Leitura indevida do manifest passa a ser impossível. |
@@ -441,7 +461,7 @@ interface SecurityLayer {
 Todos os subcomandos seguem a convenção: `sysupdate <comando> [flags]`. O binário detecta automaticamente o SO para ajustar separadores de caminho e encoding.
 
 | Fase | Subcomando | Descrição |
-| --- | --- | --- |
+|---|---|---|
 | Alpha | `pull [--version v]` | Baixa e aplica o pacote mais recente. Com `--version`, aplica uma versão específica. |
 | Alpha | `push` | Compacta os arquivos, calcula checksums e publica no servidor. |
 | Alpha | `rollback [--to v]` | Reverte o último pull. Com `--to`, reverte em cascata até a versão alvo. |
@@ -452,7 +472,7 @@ Todos os subcomandos seguem a convenção: `sysupdate <comando> [flags]`. O bin�
 ### 8.1 Flags Globais
 
 | Flag | Efeito |
-| --- | --- |
+|---|---|
 | `--keep-backups <n>` | Número de snapshots de backup a manter (padrão: 5) |
 | `--dry-run` | Simula a operação sem alterar nenhum arquivo |
 | `--verbose` | Exibe log detalhado de cada etapa |
@@ -467,7 +487,7 @@ O Bun compila o projeto em um único executável standalone via `bun build --com
 ### 9.1 Targets de Compilação
 
 | Target | Artefato | Comando |
-| --- | --- | --- |
+|---|---|---|
 | Windows x64 | `sysupdate.exe` | `bun build --compile --target=bun-windows-x64 src/main.ts` |
 | Linux x64 | `sysupdate` | `bun build --compile --target=bun-linux-x64 src/main.ts` |
 | macOS arm64 | `sysupdate` | `bun build --compile --target=bun-darwin-arm64 src/main.ts` |
@@ -475,7 +495,7 @@ O Bun compila o projeto em um único executável standalone via `bun build --com
 
 ### 9.2 Estrutura do Repositório
 
-```js
+```
 sysupdate/
   ├── cli/                          # binário do cliente
   │   ├── src/
@@ -494,24 +514,26 @@ sysupdate/
   │   │   │   ├── interface.ts      # SecurityLayer interface
   │   │   │   ├── noop.ts           # Alpha: stub sem verificação
   │   │   │   └── ed25519.ts        # v1.0: implementação real
-  │   │   ├── manifest.ts           # parse e validação JSON Schema
   │   │   └── main.ts               # entry point CLI
-  │   ├── schemas/
-  │   │   └── sysupdate.schema.json
   │   └── package.json
   ├── server/                       # servidor HTTP proxy
   │   ├── src/
   │   │   ├── routes/
-  │   │   │   ├── manifest.ts
-  │   │   │   ├── bundle.ts
-  │   │   │   ├── publish.ts
-  │   │   │   └── auth.ts
+  │   │   │   ├── manifest.ts       # GET /manifest/:version
+  │   │   │   ├── bundle.ts         # GET /bundle/:version
+  │   │   │   ├── publish.ts        # POST /publish
+  │   │   │   └── auth.ts           # POST /auth/token
   │   │   ├── middleware/
-  │   │   │   └── jwt.ts
+  │   │   │   └── jwt.ts            # validação JWT nas rotas protegidas
+  │   │   ├── db/
+  │   │   │   ├── schema.ts         # criação das tabelas SQLite
+  │   │   │   └── releases.ts       # queries de releases e files
   │   │   ├── storage/
-  │   │   │   ├── ftp.ts
-  │   │   │   └── s3.ts
+  │   │   │   ├── ftp.ts            # adapter FTP
+  │   │   │   └── s3.ts             # adapter S3/MinIO (v1.2)
   │   │   └── main.ts
+  │   ├── data/
+  │   │   └── sysupdate.db          # SQLite (ignorado pelo VCS)
   │   └── package.json
   └── tests/
 ```
@@ -521,10 +543,10 @@ sysupdate/
 ## 10. Roadmap de Desenvolvimento
 
 | Fase | Tag | Prazo Est. | Entregas |
-| --- | --- | --- | --- |
+|---|---|---|---|
 | 1 | Alpha | Semanas 1–3 | Setup Bun + TypeScript, servidor HTTP (rotas manifest/bundle/publish/auth), JWT publisher, FTP adapter no servidor, CLI base (pull/push), Security Layer stub |
 | 2 | Alpha | Semanas 4–5 | Backup, state file, checksum SHA-256, rollback, validação de manifest (JSON Schema), rotação de backups |
-| 3 | Alpha | Semanas 6–7 | --dry-run, --verbose, manifest:checksum, testes E2E, proteção contra rollback malicioso no state |
+| 3 | Alpha | Semanas 6–7 | --dry-run, --verbose, testes E2E, proteção contra rollback malicioso no state, limpeza de .bak em background |
 | 4 | v1.0 | Semanas 8–9 | Security Layer Ed25519: assinatura no push, verificação no pull, state file assinado |
 | 5 | v1.1 | Semana 10 | FTPS/SFTP no servidor, S3/MinIO no servidor, code signing do EXE (Authenticode) |
 | 6 | v1.x | Semanas 11–12 | Build EXE multi-plataforma, DLL Windows com API pública, pipeline CI/CD |
@@ -536,15 +558,15 @@ sysupdate/
 ## 11. Riscos e Mitigações
 
 | Fase | Risco | Impacto | Mitigação |
-| --- | --- | --- | --- |
+|---|---|---|---|
 | Alpha | Falha de rede no meio do pull | Alto | Bundle baixado para diretório temporário. Operação atômica: substituições só ocorrem após bundle validado. State file só atualizado após todas as substituições. |
 | Alpha | Checksum inválido do bundle baixado | Alto | Valida SHA-256 do bundle antes de extrair. Aborta e descarta o bundle se não bater. |
 | Alpha | Arquivo em uso no Windows | Médio | Detecta lock antes de iniciar. Orienta usuário a parar o processo antes do pull. |
 | Alpha | Permissão negada ao sobrescrever arquivo | Médio | Verifica permissão de escrita em todos os targets antes de iniciar qualquer download. |
 | Alpha | Disco cheio por acúmulo de backups | Baixo | Rotação automática por keepBackups. Alerta de espaço insuficiente antes do pull. |
 | Alpha | Servidor fora do ar durante pull | Médio | CLI detecta timeout e aborta com mensagem clara. Nenhum arquivo é alterado. |
-| Alpha | JWT do publisher vazado | Alto | JWT revogado manualmente via `keys:generate` — gera novo JWT e atualiza o servidor. |
-| Alpha | Manifest adulterado no servidor | Alto | Resolvido na v1.0 com assinatura Ed25519. Na Alpha: somente o publisher tem JWT de escrita. |
+| Alpha | JWT do publisher vazado | Alto | JWT expira em 1 hora — janela de exposição mínima. Novo token gerado via POST /auth/token com AUTH_SECRET. |
+| Alpha | Manifest adulterado no servidor | Alto | Resolvido na v1.0 com assinatura Ed25519. Na Alpha: somente o publisher tem acesso via JWT de escrita. |
 | v1.0 | Vazamento da chave privada Ed25519 | Alto | Chave privada nunca entra no repositório. Fica em secrets do CI e na máquina do publisher apenas. |
 
 ---
@@ -552,10 +574,10 @@ sysupdate/
 ## 12. Decisões em Aberto
 
 | Decisão | Opções / Notas |
-| --- | --- |
+|---|---|
 | Parser de argumentos CLI | citty (leve, nativo Bun) vs commander.js (mais maduro). Recomendação: citty |
 | Compressão de backups | Sem compressão vs gzip vs zstd. Avaliar pelo tamanho típico dos arquivos do sistema alvo |
-| Multi-ambiente (dev/staging/prod) | Um manifest por ambiente vs variável `SYSUPDATE_ENV` selecionando seção do manifest |
+| Multi-ambiente (dev/staging/prod) | Um `sysupdate.json` por ambiente vs variável `SYSUPDATE_ENV` selecionando seção do arquivo |
 | Notificações pós-pull | Sem notificação vs webhook configurável vs log estruturado JSON. Avaliar necessidade real |
 | Deploy do servidor | VPS própria vs serviço cloud vs mesma máquina do FTP. Impacta requisitos de infraestrutura. |
 | Banco de dados (futuro) | Migrations e integração com DB fora do escopo até v2+. Reavaliar após validação completa do fluxo de arquivos |
