@@ -32,6 +32,24 @@ function applySchema(db: Database): void {
       checksum   TEXT NOT NULL
     );
   `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS api_keys (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      key_hash   TEXT NOT NULL UNIQUE,
+      label      TEXT,
+      allowed_ip TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      last_used  TEXT,
+      revoked    INTEGER NOT NULL DEFAULT 0
+    );
+  `);
+
+  db.run(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_api_keys_one_active_per_ip
+    ON api_keys(allowed_ip)
+    WHERE revoked = 0;
+  `);
 }
 
 export function initializeDatabase(dbPath: string = DEFAULT_DB_PATH): Database {
