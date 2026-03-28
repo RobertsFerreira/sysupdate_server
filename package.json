@@ -1,6 +1,7 @@
 {
   "name": "sysupdate_server",
-  "module": "index.ts",
+  "version": "0.1.0",
+  "module": "main.ts",
   "type": "module",
   "private": true,
   "scripts": {
@@ -21,6 +22,7 @@
   },
   "dependencies": {
     "elysia": "^1.4.28",
-    "semver": "^7.7.4"
+    "semver": "^7.7.4",
+    "zod": "^4.3.6"
   }
 }
