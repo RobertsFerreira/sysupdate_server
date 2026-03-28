@@ -8,7 +8,7 @@
 ## Legenda
 
 | Campo | Descrição |
-| --- | --- |
+|---|---|
 | **ID** | Identificador único da task |
 | **Módulo** | Camada ou componente ao qual a task pertence |
 | **Descrição** | O que deve ser feito e por quê |
@@ -49,16 +49,15 @@ Criar a estrutura base do repositório seguindo a organização definida no PDR.
 **Módulo:** Setup
 
 **Descrição:**
-Criar os arquivos e diretórios base do CLI conforme a estrutura definida no PDR: `commands/`, `core/`, `security/`, `manifest.ts`, `main.ts` e `schemas/`. Os arquivos podem ser stubs vazios neste momento — o objetivo é ter o esqueleto pronto para as tasks seguintes.
+Criar os arquivos e diretórios base do CLI conforme a estrutura definida no PDR (seção 9.2): `commands/`, `core/`, `security/` e `main.ts`. Os arquivos podem ser stubs vazios neste momento — o objetivo é ter o esqueleto pronto para as tasks seguintes.
 
 **Critérios de Aceite:**
 
-- [X] Estrutura de diretórios criada: `src/commands/`, `src/core/`, `src/security/`, `schemas/`
+- [X] Estrutura de diretórios criada: `src/commands/`, `src/core/`, `src/security/`
 - [X] Arquivos stub criados: `pull.ts`, `push.ts`, `rollback.ts`, `status.ts`, `backup.ts` em `commands/`
 - [X] Arquivos stub criados: `engine.ts`, `backup.ts`, `state.ts`, `checksum.ts` em `core/`
-- [X] Arquivos stub criados: `interface.ts`, `noop.ts` em `security/`
-- [X] `manifest.ts` e `main.ts` criados no raiz de `src/`
-- [X] `schemas/sysupdate.schema.json` criado (pode ser `{}` por enquanto)
+- [X] Arquivos stub criados: `interface.ts`, `noop.ts`, `ed25519.ts` em `security/`
+- [X] `main.ts` criado no raiz de `src/` (entry point CLI)
 - [X] `main.ts` executa sem erros (`bun run src/main.ts`)
 
 ---
@@ -68,17 +67,18 @@ Criar os arquivos e diretórios base do CLI conforme a estrutura definida no PDR
 **Módulo:** Setup
 
 **Descrição:**
-Criar os arquivos e diretórios base do servidor conforme definido no PDR: `routes/`, `middleware/`, `db/`, `storage/` e `main.ts`. Incluir configuração do arquivo `.env.example` com todas as variáveis necessárias documentadas.
+Criar os arquivos e diretórios base do servidor conforme definido no PDR (seção 9.2): `routes/`, `middleware/`, `db/`, `storage/` e `main.ts`. Incluir configuração do arquivo `.env.example` com todas as variáveis necessárias documentadas, conforme seção 6.6 do PDR.
 
 **Critérios de Aceite:**
 
 - [X] Estrutura de diretórios criada: `src/routes/`, `src/middleware/`, `src/db/`, `src/storage/`
 - [X] Arquivos stub criados: `manifest.ts`, `bundle.ts`, `publish.ts`, `auth.ts` em `routes/`
-- [X] Arquivo stub criado: `jwt.ts` em `middleware/`
+- [ ] Arquivo stub criado: `apikey.ts` em `middleware/` (validação X-Api-Key + IP nas rotas protegidas)
 - [X] Arquivos stub criados: `schema.ts`, `releases.ts` em `db/`
 - [X] Arquivos stub criados: `ftp.ts`, `s3.ts` em `storage/`
 - [X] `main.ts` criado e sobe servidor HTTP na porta configurada
-- [X] `.env.example` documentado com: `SERVER_PORT`, `JWT_SECRET`, `AUTH_SECRET`, `TOKEN_TTL`, `STORAGE_PROVIDER`, `STORAGE_HOST`, `STORAGE_USER`, `STORAGE_PASSWORD`, `STORAGE_BASE_PATH`
+- [ ] `.env.example` do servidor documentado com: `SERVER_PORT`, `REGISTER_SECRET`, `STORAGE_PROVIDER`, `STORAGE_HOST`, `STORAGE_USER`, `STORAGE_PASSWORD`, `STORAGE_BASE_PATH`
+- [ ] `.env.example` da CLI (publisher) documentado com: `SERVER_URL`, `REGISTER_SECRET`
 - [X] `GET /health` responde `200 OK` com `{ "status": "ok" }`
 
 ---
@@ -87,22 +87,27 @@ Criar os arquivos e diretórios base do servidor conforme definido no PDR: `rout
 
 ---
 
-#### TASK-004 — Implementar schema SQLite e queries de releases
+#### TASK-004 — Implementar schema SQLite e queries de releases e api_keys
 
 **Módulo:** Server / DB
 
 **Descrição:**
-Criar e inicializar o banco de dados SQLite do servidor com as tabelas `releases` e `release_files` conforme o schema do PDR. Implementar as queries necessárias para inserção e consulta de releases.
+Criar e inicializar o banco de dados SQLite do servidor com as tabelas `releases`, `release_files` e `api_keys` conforme o schema da seção 6.2 do PDR. Implementar as queries necessárias para inserção e consulta de releases, e gestão de API Keys.
 
 **Critérios de Aceite:**
 
 - [X] Banco criado em `data/sysupdate.db` na primeira inicialização do servidor
 - [X] Tabela `releases` criada com colunas: `id`, `version` (UNIQUE), `description`, `min_version`, `bundle_file`, `bundle_checksum`, `release_date`, `created_at`
 - [X] Tabela `release_files` criada com colunas: `id`, `release_id` (FK → releases), `target`, `checksum`
+- [ ] Tabela `api_keys` criada com colunas: `id`, `key_hash` (SHA-256 da key — UNIQUE), `label`, `allowed_ip`, `created_at`, `last_used`, `revoked` (0=ativa, 1=revogada)
 - [X] Função `insertRelease(data)` implementada em `db/releases.ts`
 - [X] Função `getLatestRelease()` implementada — retorna a release com maior versão semver
 - [X] Função `getReleaseByVersion(version)` implementada — retorna release específica ou `null`
 - [X] Função `getReleaseFiles(releaseId)` implementada — retorna array de arquivos da release
+- [ ] Função `insertApiKey(keyHash, ip, label)` implementada em `db/apikeys.ts`
+- [ ] Função `findActiveApiKey(keyHash, ip)` implementada — retorna key ativa para o hash+IP ou `null`
+- [ ] Função `updateApiKeyLastUsed(keyHash)` implementada
+- [ ] Função `hasActiveKeyForIp(ip)` implementada — verifica se já existe key ativa para o IP
 - [X] Banco recriado corretamente se `data/sysupdate.db` não existir
 - [X] `data/sysupdate.db` está no `.gitignore`
 
@@ -112,26 +117,25 @@ Criar e inicializar o banco de dados SQLite do servidor com as tabelas `releases
 
 ---
 
-#### TASK-005 — Implementar geração e validação de JWT do publisher
+#### TASK-005 — Implementar registro de API Key e middleware de autenticação
 
 **Módulo:** Server / Auth
 
 **Descrição:**
-Implementar a rota `POST /auth/token` que gera o JWT do publisher mediante apresentação do `AUTH_SECRET`. Implementar o middleware JWT que valida o token nas rotas protegidas. O JWT segue o padrão RFC 7519 com algoritmo HS256 e expira em 1 hora por padrão (configurável via `TOKEN_TTL` no `.env`). O publisher gera o token imediatamente antes de cada push, usa e descarta.
+Implementar o modelo de autenticação por API Key vinculada a IP, conforme a seção 6.4 do PDR. A rota `POST /auth/register` recebe o `REGISTER_SECRET` e gera uma API Key única vinculada ao IP do solicitante. O middleware `apikey.ts` valida o header `X-Api-Key` nas rotas protegidas, verificando o hash da key e o IP da requisição. A CLI chama o registro automaticamente no primeiro push — o publisher nunca precisa fazer isso manualmente.
 
 **Critérios de Aceite:**
 
-- [ ] `POST /auth/token` com `{ "secret": "..." }` correto retorna `{ "token": "eyJ..." }` com status `200`
-- [ ] `POST /auth/token` com secret incorreto retorna `401`
-- [ ] `POST /auth/token` sem body retorna `400`
-- [ ] JWT gerado com HS256 contém payload: `sub: "publisher"`, `permissions: ["publish"]`, `iat`, `exp` (iat + TOKEN_TTL)
-- [ ] `TOKEN_TTL` lido do `.env` — padrão `3600` (1 hora) se ausente
-- [ ] Middleware `jwt.ts` valida o header `Authorization: Bearer <token>`
-- [ ] Middleware verifica assinatura, expiração (`exp`) e `permissions: ["publish"]`
-- [ ] Requisição sem token para rota protegida retorna `401`
-- [ ] Requisição com token inválido ou expirado retorna `401`
-- [ ] `JWT_SECRET` e `AUTH_SECRET` lidos do `.env` — erro claro se ausentes na inicialização
-- [ ] JWT gerado é stateless (validado apenas pelo `JWT_SECRET`, sem estado no servidor)
+- [ ] `POST /auth/register` com header `X-Register-Secret` correto gera uma API Key no formato `sysupdate_<32 bytes hex>`
+- [ ] Servidor captura o IP da requisição via `x-forwarded-for` ou `socket.remoteAddress`
+- [ ] Retorna `409` se já existir key ativa para o IP solicitante
+- [ ] Retorna `401` se `X-Register-Secret` for inválido
+- [ ] API Key nunca é armazenada em texto claro — apenas `SHA-256(key)` é salvo na tabela `api_keys`
+- [ ] Resposta retorna `{ "key": "sysupdate_a3f7...", "ip": "203.0.113.42" }` — única vez que a key aparece em texto claro
+- [ ] Middleware `apikey.ts` lê `X-Api-Key` do header, calcula `SHA-256(key recebida)`, busca no SQLite por `key_hash + revoked = 0`, compara IP da requisição com `allowed_ip` registrado
+- [ ] Middleware retorna `401` se key não encontrada, revogada ou IP divergente
+- [ ] Middleware atualiza `last_used` a cada requisição autorizada
+- [ ] `REGISTER_SECRET` lido do `.env` — erro claro se ausente na inicialização
 
 ---
 
@@ -144,14 +148,14 @@ Implementar a rota `POST /auth/token` que gera o JWT do publisher mediante apres
 **Módulo:** Server / Routes
 
 **Descrição:**
-Implementar as rotas de leitura do manifest. O servidor monta o JSON de resposta dinamicamente a partir do SQLite — sem arquivo estático. A rota é pública (sem autenticação).
+Implementar as rotas de leitura do manifest. O servidor monta o JSON de resposta dinamicamente a partir do SQLite — sem arquivo estático. A rota é pública (sem autenticação). A resposta segue o schema da seção 6.3 do PDR.
 
 **Critérios de Aceite:**
 
 - [ ] `GET /manifest/latest` retorna o manifest da release com maior versão semver
 - [ ] `GET /manifest/:version` retorna o manifest da versão especificada
 - [ ] `GET /manifest/:version` retorna `404` com mensagem clara se a versão não existir
-- [ ] Resposta segue exatamente o schema definido no PDR (seção 6.3): `version`, `releaseDate`, `description`, `minVersion`, `bundle.file`, `bundle.checksum`, `files[].target`, `files[].checksum`
+- [ ] Resposta segue o schema da seção 6.3 do PDR: `version`, `releaseDate`, `description`, `minVersion`, `bundle.file`, `bundle.checksum`, `files[].target`, `files[].checksum`
 - [ ] Content-Type da resposta é `application/json`
 - [ ] Rota não exige autenticação
 
@@ -181,13 +185,13 @@ Implementar a rota que faz stream do bundle `.zip` a partir do storage FTP. A ro
 **Módulo:** Server / Routes
 
 **Descrição:**
-Implementar a rota protegida que recebe o bundle do publisher, salva no FTP e registra os metadados no SQLite. Requer JWT válido no header Authorization.
+Implementar a rota protegida que recebe o bundle do publisher, salva no FTP e registra os metadados no SQLite. Requer API Key válida no header `X-Api-Key`, vinculada ao IP de origem. A operação é atômica: falha no FTP impede o registro no SQLite.
 
 **Critérios de Aceite:**
 
-- [ ] `POST /publish` exige JWT válido — retorna `401` sem token ou com token inválido
+- [ ] `POST /publish` exige `X-Api-Key` válida — retorna `401` sem key, com key inválida ou IP divergente
 - [ ] Recebe `multipart/form-data` com os campos: `bundle` (arquivo zip), `version`, `releaseDate`, `description`, `minVersion`, `files` (JSON array com `target` e `checksum`), `bundleChecksum`
-- [ ] Valida que todos os campos obrigatórios estão presentes — retorna `400` com campo faltante identificado
+- [ ] Valida que todos os campos obrigatórios estão presentes — retorna `400` com o campo faltante identificado
 - [ ] Recusa publicação se a versão já existir no SQLite — retorna `409`
 - [ ] Salva o bundle no FTP em `STORAGE_BASE_PATH/release-{version}.zip`
 - [ ] Registra a release e os arquivos no SQLite após upload bem-sucedido no FTP
@@ -205,7 +209,7 @@ Implementar a rota protegida que recebe o bundle do publisher, salva no FTP e re
 **Módulo:** Server / Storage
 
 **Descrição:**
-Implementar o adapter FTP em `storage/ftp.ts` usando a lib `basic-ftp`. O adapter deve expor uma interface comum que permita substituição futura por S3/MinIO sem alteração nas rotas.
+Implementar o adapter FTP em `storage/ftp.ts` usando a lib `basic-ftp`. O adapter deve expor uma interface comum `StorageAdapter` que permita substituição futura por S3/MinIO sem alteração nas rotas.
 
 **Critérios de Aceite:**
 
@@ -229,11 +233,11 @@ Implementar o adapter FTP em `storage/ftp.ts` usando a lib `basic-ftp`. O adapte
 **Módulo:** CLI / Security
 
 **Descrição:**
-Definir a interface `SecurityLayer` e implementar o stub `noop.ts` para a fase Alpha. O stub retorna `true` em todas as verificações e buffer vazio nas assinaturas — sem criptografia. O ponto de extensão garante que a v1.0 seja plugada sem refatoração.
+Definir a interface `SecurityLayer` e implementar o stub `noop.ts` para a fase Alpha. O stub retorna `true` em todas as verificações e buffer vazio nas assinaturas — sem criptografia. O ponto de extensão garante que a v1.0 seja plugada sem refatoração do Core Engine.
 
 **Critérios de Aceite:**
 
-- [ ] Interface `SecurityLayer` definida em `security/interface.ts` com os métodos: `verifyManifest()`, `verifyFile()`, `signManifest()`, `signFile()` conforme assinaturas do PDR
+- [ ] Interface `SecurityLayer` definida em `security/interface.ts` com os métodos: `verifyManifest()`, `verifyFile()`, `signManifest()`, `signFile()` conforme assinaturas da seção 7.1 do PDR
 - [ ] `noop.ts` implementa `SecurityLayer`: `verifyManifest()` e `verifyFile()` sempre retornam `Promise<true>`, `signManifest()` e `signFile()` retornam `Promise<new Uint8Array(0)>`
 - [ ] Core Engine usa a interface `SecurityLayer` — nunca importa `noop.ts` diretamente (injeção de dependência)
 - [ ] Arquivo `ed25519.ts` criado como stub vazio com comentário `// v1.0`
@@ -250,7 +254,7 @@ Definir a interface `SecurityLayer` e implementar o stub `noop.ts` para a fase A
 **Módulo:** CLI / Core
 
 **Descrição:**
-Implementar `core/checksum.ts` com funções para calcular SHA-256 de arquivos e de buffers em memória. Usado tanto no pull (validação) quanto no push (geração de checksums para o manifest).
+Implementar `core/checksum.ts` com funções para calcular SHA-256 de arquivos e de buffers em memória. Usado tanto no pull (validação em dois níveis) quanto no push (geração de checksums para o manifest).
 
 **Critérios de Aceite:**
 
@@ -260,7 +264,7 @@ Implementar `core/checksum.ts` com funções para calcular SHA-256 de arquivos e
 - [ ] `checksumFile` lê o arquivo em stream para não carregar em memória (importante para EXEs grandes)
 - [ ] Erro claro se o arquivo não existir
 - [ ] Resultado é string hexadecimal lowercase de 64 caracteres
-- [ ] Testes unitários: checksum de arquivo conhecido bate com valor de referência
+- [ ] Testes unitários: checksum de arquivo conhecido bate com valor de referência; buffer vazio retorna `e3b0c44...`
 
 ---
 
@@ -269,16 +273,16 @@ Implementar `core/checksum.ts` com funções para calcular SHA-256 de arquivos e
 **Módulo:** CLI / Core
 
 **Descrição:**
-Implementar `manifest.ts` com parse do JSON recebido do servidor e validação contra o JSON Schema. Também implementar o JSON Schema em `schemas/sysupdate.schema.json`.
+Implementar `manifest.ts` com parse do JSON recebido do servidor e validação contra JSON Schema usando `ajv`. O schema deve cobrir todos os campos da resposta definida na seção 6.3 do PDR.
 
 **Critérios de Aceite:**
 
-- [ ] JSON Schema criado em `schemas/sysupdate.schema.json` cobrindo todos os campos da resposta do servidor (seção 6.3 do PDR)
 - [ ] `parseManifest(raw: string): Manifest` — faz parse do JSON e valida contra o schema com `ajv`
 - [ ] Lança erro descritivo com o campo inválido se a validação falhar
 - [ ] Lança erro se o JSON for malformado
 - [ ] Tipo TypeScript `Manifest` exportado e usado em todo o CLI (sem `any`)
-- [ ] Testes unitários: manifest válido passa, manifest sem campo obrigatório falha com mensagem do campo
+- [ ] Schema cobre todos os campos do PDR seção 6.3: `version`, `releaseDate`, `description`, `minVersion`, `bundle.file`, `bundle.checksum`, `files[].target`, `files[].checksum`
+- [ ] Testes unitários: manifest válido passa; manifest sem campo obrigatório falha com mensagem do campo faltante
 
 ---
 
@@ -287,7 +291,7 @@ Implementar `manifest.ts` com parse do JSON recebido do servidor e validação c
 **Módulo:** CLI / Core + Commands
 
 **Descrição:**
-Implementar o fluxo completo do `pull`: buscar manifest, validar versão, baixar bundle, validar checksum do bundle, extrair em diretório temporário, aplicar arquivos e exibir relatório. Sem backup nesta task — o backup é adicionado na Fase 2.
+Implementar o fluxo completo do `pull` conforme a seção 2.1 do PDR: buscar manifest, validar versão, baixar bundle, validar checksum do bundle, extrair em diretório temporário, aplicar arquivos e exibir relatório. Sem backup nesta task — o backup é integrado na Fase 2.
 
 **Critérios de Aceite:**
 
@@ -296,11 +300,11 @@ Implementar o fluxo completo do `pull`: buscar manifest, validar versão, baixar
 - [ ] Valida o manifest contra o JSON Schema antes de prosseguir
 - [ ] Chama `verifyManifest()` da Security Layer (stub na Alpha — sempre passa)
 - [ ] Compara versão do manifest com versão no state file — aborta se igual ou menor com mensagem: `"Manifest desatualizado. Versão instalada (X) é igual ou superior ao manifest"`
+- [ ] Verifica permissão de escrita em todos os targets antes de iniciar qualquer download
 - [ ] Baixa bundle via `GET /bundle/:version` em stream para diretório temporário
 - [ ] Valida SHA-256 do bundle baixado contra `bundle.checksum` do manifest — aborta e descarta temp se não bater
 - [ ] Extrai bundle no diretório temporário
 - [ ] Para cada arquivo: compara checksum local do target com checksum do manifest — se igual, marca como "pulado"; se diferente ou ausente, copia arquivo para o target
-- [ ] Verifica permissão de escrita em todos os targets antes de iniciar qualquer download
 - [ ] Atualiza state file com nova versão após todas as substituições — entrada do histórico inclui `files[]` (substituídos) e `skipped[]` (checksum igual)
 - [ ] Remove diretório temporário ao final (sucesso ou falha)
 - [ ] Exibe relatório final: arquivos atualizados, pulados
@@ -313,26 +317,28 @@ Implementar o fluxo completo do `pull`: buscar manifest, validar versão, baixar
 **Módulo:** CLI / Core + Commands
 
 **Descrição:**
-Implementar o fluxo completo do `push`: ler `sysupdate.json`, validar arquivos locais, compactar bundle, calcular checksums, assinar (stub na Alpha) e publicar no servidor via `POST /publish`.
+Implementar o fluxo completo do `push` conforme a seção 2.2 do PDR: ler `sysupdate.json`, validar arquivos locais, compactar bundle, calcular checksums, assinar (stub na Alpha) e publicar no servidor via `POST /publish` com API Key. A CLI gerencia o registro automaticamente: se não houver API Key salva localmente, chama `POST /auth/register` com o `REGISTER_SECRET`, salva a key retornada e prossegue — o publisher nunca precisa fazer isso manualmente.
 
 **Critérios de Aceite:**
 
 - [ ] `sysupdate push` lê `sysupdate.json` do diretório atual
 - [ ] Aborta com erro claro se `sysupdate.json` não existir ou for inválido
 - [ ] Valida que todos os `localSource` existem — lista os arquivos ausentes no erro
+- [ ] Verifica se existe API Key salva localmente (`.env` local) — se não, chama `POST /auth/register` automaticamente com `X-Register-Secret`
+- [ ] Salva a key retornada pelo registro no `.env` local para uso futuro
+- [ ] Aborta com erro claro se o registro falhar (secret inválido, IP já registrado)
 - [ ] Compacta todos os arquivos em bundle `.zip` (`release-{version}.zip`)
 - [ ] Calcula SHA-256 de cada arquivo individualmente
 - [ ] Calcula SHA-256 do bundle completo
 - [ ] Chama `signManifest()` e `signFile()` da Security Layer (stub na Alpha — retorna buffer vazio)
-- [ ] Envia `POST /publish` com JWT do publisher (lido do `.env` ou variável de ambiente `SYSUPDATE_JWT`)
-- [ ] Aborta com `401` claro se JWT estiver ausente ou inválido
+- [ ] Envia `POST /publish` com `X-Api-Key` no header
+- [ ] Aborta com `401` claro se a API Key for inválida ou o IP divergir
 - [ ] Aborta com `409` claro se a versão já existir no servidor
 - [ ] Exibe confirmação com versão publicada e checksum do bundle em caso de sucesso
-- [ ] JWT lido de variável de ambiente `SYSUPDATE_JWT` ou arquivo `.env` local
 
 ---
 
-### Módulo: CLI — State Manager (básico)
+### Módulo: CLI — State Manager
 
 ---
 
@@ -341,7 +347,7 @@ Implementar o fluxo completo do `push`: ler `sysupdate.json`, validar arquivos l
 **Módulo:** CLI / Core
 
 **Descrição:**
-Implementar `core/state.ts` com leitura e escrita do state file `.sysupdate-state.json`. Nesta fase, o state file registra apenas a versão instalada e o histórico básico. A proteção contra rollback malicioso e assinatura são adicionadas nas fases seguintes.
+Implementar `core/state.ts` com leitura e escrita do state file `.sysupdate-state.json`. O state file registra a versão instalada e o histórico completo de pulls, conforme a estrutura da seção 4.2 do PDR. A assinatura do state file é adicionada na Fase 4.
 
 **Critérios de Aceite:**
 
@@ -357,7 +363,7 @@ Implementar `core/state.ts` com leitura e escrita do state file `.sysupdate-stat
 ---
 
 ## FASE 2 — Alpha · Semanas 4–5
->
+
 > Backup, state file completo, checksum integrado, rollback e rotação de backups.
 
 ---
@@ -371,7 +377,7 @@ Implementar `core/state.ts` com leitura e escrita do state file `.sysupdate-stat
 **Módulo:** CLI / Core / Backup
 
 **Descrição:**
-Implementar `core/backup.ts` com a criação de snapshots versionados antes de substituir arquivos. Cada snapshot copia os arquivos alvo para `.sysupdate-backups/v{versão}_{timestamp}/files/` e salva uma cópia do manifest aplicado.
+Implementar `core/backup.ts` com a criação de snapshots versionados antes de substituir arquivos. Cada snapshot copia os arquivos alvo para `.sysupdate-backups/v{versão}_{timestamp}/files/` e salva uma cópia do manifest aplicado, conforme a estrutura da seção 5.3 do PDR.
 
 **Critérios de Aceite:**
 
@@ -391,7 +397,7 @@ Implementar `core/backup.ts` com a criação de snapshots versionados antes de s
 **Módulo:** CLI / Core
 
 **Descrição:**
-Integrar o Backup Manager no fluxo do pull (TASK-013). O backup deve ocorrer após extração do bundle e antes de qualquer substituição de arquivo. O relatório final deve incluir backups criados.
+Integrar o Backup Manager no fluxo do pull (TASK-013). O backup deve ocorrer após extração do bundle e antes de qualquer substituição de arquivo. O relatório final deve incluir o caminho do snapshot criado.
 
 **Critérios de Aceite:**
 
@@ -400,7 +406,7 @@ Integrar o Backup Manager no fluxo do pull (TASK-013). O backup deve ocorrer ap�
 - [ ] Se a criação do snapshot falhar, o pull aborta sem substituir nenhum arquivo
 - [ ] `--no-backup` pula a criação do snapshot (sem refatoração do fluxo principal)
 - [ ] Relatório final exibe: arquivos atualizados, pulados e caminho do snapshot criado
-- [ ] State file é atualizado com referência ao snapshot da versão, incluindo listas `files[]` (atualizados) e `skipped[]` (pulados por checksum igual)
+- [ ] State file é atualizado com referência ao snapshot da versão, incluindo listas `files[]` (substituídos) e `skipped[]` (pulados por checksum igual)
 
 ---
 
@@ -428,7 +434,7 @@ Após criar um novo snapshot, remover automaticamente os snapshots mais antigos 
 **Módulo:** CLI / Commands
 
 **Descrição:**
-Implementar `sysupdate rollback` que restaura o sistema para o snapshot da versão imediatamente anterior. A operação é atômica: o state file só é atualizado após todos os arquivos serem restaurados com sucesso.
+Implementar `sysupdate rollback` que restaura o sistema para o snapshot da versão imediatamente anterior, conforme o fluxo da seção 5.4 do PDR. A operação é atômica: o state file só é atualizado após todos os arquivos serem restaurados com sucesso.
 
 **Critérios de Aceite:**
 
@@ -436,7 +442,7 @@ Implementar `sysupdate rollback` que restaura o sistema para o snapshot da vers�
 - [ ] Valida que os arquivos `.bak` do snapshot existem antes de iniciar a restauração
 - [ ] Valida checksum de cada `.bak` contra o manifest salvo no snapshot
 - [ ] Copia cada `.bak` de volta para o caminho original (`target`) registrado no manifest do snapshot
-- [ ] State file atualizado após todas as restaurações serem concluídas — remove a versão revertida e atualiza `installedVersion`
+- [ ] State file atualizado após todas as restaurações — remove a versão revertida e atualiza `installedVersion`
 - [ ] Se qualquer restauração falhar, aborta e não atualiza o state file
 - [ ] `sysupdate rollback --to 2.3.0` reverte em cascata: aplica cada rollback na ordem inversa até atingir a versão alvo
 - [ ] Aborta com mensagem clara se não houver snapshot disponível para rollback
@@ -449,7 +455,7 @@ Implementar `sysupdate rollback` que restaura o sistema para o snapshot da vers�
 **Módulo:** CLI / Core
 
 **Descrição:**
-Garantir que o CLI nunca aceita um manifest com versão menor ou igual à versão registrada no state file, prevenindo que um manifest antigo no servidor force uma versão anterior.
+Garantir que o CLI nunca aceita um manifest com versão menor ou igual à versão registrada no state file, prevenindo que um manifest antigo no servidor force um downgrade, conforme a seção 4.2 do PDR.
 
 **Critérios de Aceite:**
 
@@ -470,7 +476,7 @@ Garantir que o CLI nunca aceita um manifest com versão menor ou igual à versã
 **Módulo:** CLI / Core
 
 **Descrição:**
-Tratar o caso em que o bundle inclui o próprio `sysupdate.exe`. No Windows, o arquivo em execução não pode ser deletado mas pode ser renomeado. O pull deve detectar esse caso e executar a sequência correta: renomear o atual para `.bak`, copiar o novo.
+Tratar o caso em que o bundle inclui o próprio `sysupdate.exe`, conforme a seção 5.1 do PDR. No Windows, o arquivo em execução não pode ser deletado mas pode ser renomeado. O pull deve detectar esse caso e executar a sequência correta.
 
 **Critérios de Aceite:**
 
@@ -488,7 +494,7 @@ Tratar o caso em que o bundle inclui o próprio `sysupdate.exe`. No Windows, o a
 **Módulo:** CLI / Core
 
 **Descrição:**
-Na inicialização do CLI, disparar em background (sem `await`) a rotina `cleanupSelfBackup()` que move `sysupdate.exe.bak` para o diretório de backups versionados. Falha não deve impactar o comando principal.
+Na inicialização do CLI, disparar em background (sem `await`) a rotina `cleanupSelfBackup()` que move `sysupdate.exe.bak` para o diretório de backups versionados, conforme a seção 5.2 do PDR. Falha não deve impactar o comando principal.
 
 **Critérios de Aceite:**
 
@@ -504,7 +510,7 @@ Na inicialização do CLI, disparar em background (sem `await`) a rotina `cleanu
 ---
 
 ## FASE 3 — Alpha · Semanas 6–7
->
+
 > Flags de operação, testes E2E e hardening do fluxo.
 
 ---
@@ -559,7 +565,7 @@ Implementar `sysupdate status` que exibe um resumo do estado atual da instalaç�
 **Critérios de Aceite:**
 
 - [ ] Exibe `installedVersion` e `lastApplied` do state file
-- [ ] Exibe histórico das últimas N versões aplicadas (padrão: 5)
+- [ ] Exibe histórico das últimas N versões aplicadas (padrão: 5), incluindo `files[]` e `skipped[]` por entrada
 - [ ] Lista snapshots disponíveis em `.sysupdate-backups/` com versão, data e tamanho
 - [ ] Se state file não existir, exibe `"Nenhuma versão instalada"`
 - [ ] Output formatado e legível no terminal (sem dependência de lib de UI)
@@ -579,13 +585,15 @@ Implementar testes E2E que exercitam o fluxo completo: push de um bundle pelo pu
 
 **Critérios de Aceite:**
 
-- [ ] Teste E2E: push de bundle com 2 arquivos → pull pelo cliente → verificar arquivos no target → verificar state file atualizado
+- [ ] Teste E2E: push de bundle com 2 arquivos → pull pelo cliente → verificar arquivos no target → verificar state file atualizado (com `files[]` e `skipped[]`)
+- [ ] Teste E2E: push sem API Key salva → auto-registro → key salva localmente → push concluído
+- [ ] Teste E2E: push com IP diferente do registrado → retorna `401`
 - [ ] Teste E2E: pull com bundle corrompido (checksum inválido) → aborta → nenhum arquivo alterado
 - [ ] Teste E2E: pull de versão já instalada → aborta com mensagem de versão igual
 - [ ] Teste E2E: pull → rollback → verificar arquivos restaurados e state file revertido
 - [ ] Teste E2E: pull com arquivo em target inexistente (primeira instalação) → cria arquivo
-- [ ] Teste E2E: pull com arquivo já correto (checksum igual) → arquivo pulado
-- [ ] Setup de FTP local (ex: `basic-ftp` apontando para diretório local) para isolar testes de infra real
+- [ ] Teste E2E: pull com arquivo já correto (checksum igual) → arquivo pulado, registrado em `skipped[]`
+- [ ] Setup de FTP local para isolar testes de infra real
 - [ ] Testes rodam com `bun test` sem dependência de FTP real
 
 ---
@@ -599,8 +607,8 @@ Cobrir com testes unitários os módulos críticos: `checksum.ts`, `state.ts` e 
 
 **Critérios de Aceite:**
 
-- [ ] `checksum.ts`: SHA-256 de arquivo conhecido bate com valor de referência; SHA-256 de buffer vazio bate com `e3b0c44...`
-- [ ] `state.ts`: `readState` retorna `null` para arquivo inexistente; `writeState` → `readState` retorna o mesmo objeto; estado corrompido lança erro
+- [ ] `checksum.ts`: SHA-256 de arquivo conhecido bate com valor de referência; buffer vazio retorna `e3b0c44...`
+- [ ] `state.ts`: `readState` retorna `null` para arquivo inexistente; `writeState` → `readState` retorna o mesmo objeto incluindo `skipped[]`; estado corrompido lança erro
 - [ ] `manifest.ts`: manifest válido passa validação; manifest sem campo `version` falha com mensagem clara; JSON inválido lança parse error
 - [ ] Proteção rollback malicioso: versão manifest < instalada → rejeita; versão manifest > instalada → aceita; versão igual → rejeita
 - [ ] Cobertura mínima de 80% nos módulos cobertos
@@ -610,7 +618,7 @@ Cobrir com testes unitários os módulos críticos: `checksum.ts`, `state.ts` e 
 ---
 
 ## FASE 4 — v1.0 · Semanas 8–9
->
+
 > Security Layer Ed25519: assinatura no push, verificação no pull, state file assinado.
 
 ---
@@ -624,7 +632,7 @@ Cobrir com testes unitários os módulos críticos: `checksum.ts`, `state.ts` e 
 **Módulo:** Server / Security
 
 **Descrição:**
-Na primeira inicialização do servidor, gerar automaticamente o par de chaves Ed25519 e salvar no `.env` do servidor. A chave pública será embutida no EXE do CLI no momento do build. A chave privada nunca sai do servidor.
+Na primeira inicialização do servidor, gerar automaticamente o par de chaves Ed25519 e salvar no `.env` do servidor. A chave pública será embutida no EXE do CLI no momento do build via CI. A chave privada nunca sai do servidor.
 
 **Critérios de Aceite:**
 
@@ -637,34 +645,34 @@ Na primeira inicialização do servidor, gerar automaticamente o par de chaves E
 
 ---
 
-#### TASK-029 — Implementar assinatura Ed25519 no push (servidor)
+#### TASK-029 — Implementar assinatura Ed25519 no push
 
-**Módulo:** Server / Security + CLI / Security
+**Módulo:** CLI / Security + Server / Security
 
 **Descrição:**
-No fluxo de push, assinar o manifest e cada arquivo do bundle com a chave privada Ed25519. Os arquivos `.sig` são publicados junto com o bundle no storage. Implementar a função real em `security/ed25519.ts` no CLI para o lado do publisher.
+Implementar `signManifest()` e `signFile()` reais em `security/ed25519.ts` no CLI. No fluxo de push, assinar o manifest e cada arquivo do bundle com a chave privada Ed25519. Os arquivos `.sig` são publicados junto com o bundle no storage.
 
 **Critérios de Aceite:**
 
 - [ ] `signManifest(manifestBytes)` em `ed25519.ts` assina com chave privada Ed25519 via WebCrypto
-- [ ] `signFile(fileBytes)` em `ed25519.ts` assina com chave privada Ed25519
+- [ ] `signFile(fileBytes)` em `ed25519.ts` assina com chave privada Ed25519 via WebCrypto
 - [ ] Chave privada lida de variável de ambiente `ED25519_PRIVATE_KEY` (nunca hardcoded)
 - [ ] Servidor publica arquivos `.sig` no FTP junto com o bundle
 - [ ] `POST /publish` inclui as assinaturas no payload enviado
-- [ ] Noop continua funcionando para testes sem chave configurada
+- [ ] `noop.ts` continua funcionando para testes sem chave configurada
 
 ---
 
-#### TASK-030 — Implementar verificação Ed25519 no pull (CLI)
+#### TASK-030 — Implementar verificação Ed25519 no pull
 
 **Módulo:** CLI / Security
 
 **Descrição:**
-Implementar `verifyManifest()` e `verifyFile()` em `security/ed25519.ts` no CLI. A chave pública é embutida no EXE no momento do build. Pull falha se assinatura inválida.
+Implementar `verifyManifest()` e `verifyFile()` reais em `security/ed25519.ts` no CLI. A chave pública é embutida no EXE no momento do build via CI. Pull aborta se qualquer assinatura for inválida.
 
 **Critérios de Aceite:**
 
-- [ ] `verifyManifest(manifestBytes, sig)` verifica assinatura com chave pública embutida
+- [ ] `verifyManifest(manifestBytes, sig)` verifica assinatura com chave pública embutida via WebCrypto
 - [ ] `verifyFile(fileBytes, sig)` verifica assinatura de cada arquivo
 - [ ] Chave pública lida de variável de ambiente `ED25519_PUBLIC_KEY` embutida no EXE no build
 - [ ] Pull aborta com erro claro se `verifyManifest()` retornar `false`
@@ -679,7 +687,7 @@ Implementar `verifyManifest()` e `verifyFile()` em `security/ed25519.ts` no CLI.
 **Módulo:** CLI / Core + Security
 
 **Descrição:**
-A partir da v1.0, o state file é assinado junto ao manifest. O CLI rejeita state files com versão manipulada manualmente.
+A partir da v1.0, o state file é assinado junto ao manifest. O CLI rejeita state files com versão manipulada manualmente, conforme a seção 7.2 do PDR.
 
 **Critérios de Aceite:**
 
@@ -694,12 +702,12 @@ A partir da v1.0, o state file é assinado junto ao manifest. O CLI rejeita stat
 ---
 
 ## FASE 5 — v1.1 · Semana 10
->
+
 > FTPS/SFTP, S3/MinIO e code signing do EXE.
 
 ---
 
-### Módulo: Server — Storage (PT.1)
+### Módulo: Server — Storage
 
 ---
 
@@ -731,7 +739,7 @@ Implementar `storage/s3.ts` usando `aws-sdk v3` para suporte a S3 e MinIO. Selec
 
 - [ ] `s3.ts` implementa a interface `StorageAdapter`
 - [ ] `STORAGE_PROVIDER=s3` ativa o adapter S3/MinIO
-- [ ] Variáveis de ambiente adicionadas: `S3_BUCKET`, `S3_REGION`, `S3_ENDPOINT` (para MinIO), `S3_ACCESS_KEY`, `S3_SECRET_KEY`
+- [ ] Variáveis de ambiente adicionadas ao `.env.example`: `S3_BUCKET`, `S3_REGION`, `S3_ENDPOINT` (para MinIO), `S3_ACCESS_KEY`, `S3_SECRET_KEY`
 - [ ] `upload()` faz multipart upload para o bucket configurado
 - [ ] `download()` retorna stream do objeto S3
 - [ ] `exists()` verifica existência do objeto via `HeadObject`
@@ -763,7 +771,7 @@ Assinar o `sysupdate.exe` com certificado Authenticode para que o Windows valide
 ---
 
 ## FASE 6 — v1.x · Semanas 11–12
->
+
 > Build multi-plataforma, DLL Windows e pipeline CI/CD.
 
 ---
@@ -777,7 +785,7 @@ Assinar o `sysupdate.exe` com certificado Authenticode para que o Windows valide
 **Módulo:** Build
 
 **Descrição:**
-Configurar o pipeline de build para compilar o CLI para Windows x64, Linux x64 e macOS arm64 usando `bun build --compile` com os targets corretos. A chave pública Ed25519 é injetada via variável de ambiente no momento do build.
+Configurar o pipeline de build para compilar o CLI para Windows x64, Linux x64 e macOS arm64 usando `bun build --compile`, conforme os targets da seção 9.1 do PDR. A chave pública Ed25519 é injetada via variável de ambiente no momento do build.
 
 **Critérios de Aceite:**
 
@@ -828,7 +836,7 @@ Configurar pipeline CI/CD (GitHub Actions ou equivalente) que executa testes, bu
 ---
 
 ## FASE 7 — v2.0 · Futuro
->
+
 > Criptografia do manifest: X25519 + AES-256-GCM.
 
 ---
@@ -860,12 +868,12 @@ Cifrar o manifest com AES-256-GCM. A chave AES é gerada por pacote e cifrada co
 ---
 
 ## FASE 8 — v3.0 · Futuro
->
+
 > Download por chunks para bundles grandes.
 
 ---
 
-### Módulo: CLI — Core (PT.1)
+### Módulo: CLI — Core
 
 ---
 

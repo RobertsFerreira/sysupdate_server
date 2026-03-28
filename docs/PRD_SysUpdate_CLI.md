@@ -1,4 +1,4 @@
-# SysUpdate CLI — PRD
+# SysUpdate CLI — PDR
 
 > Ferramenta de Atualização de Sistemas com Backup e Rollback de Arquivos
 
@@ -52,7 +52,7 @@ A ferramenta é organizada em camadas bem definidas para permitir extensibilidad
 | Security Layer | `verifyManifest()` e `verifyFile()` — stub na Alpha, real na v1 | WebCrypto (Ed25519) |
 | Backup Manager | Cópia versionada dos arquivos antes de sobrescrever | fs nativo + zlib |
 | State Manager | Persiste histórico de versões aplicadas em JSON local | fs nativo |
-| **Server** | **Proxy HTTP entre cliente e storage — armazena metadados no SQLite, autentica push via JWT** | **Bun HTTP** |
+| **Server** | **Proxy HTTP entre cliente e storage — armazena metadados no SQLite, autentica registro via `REGISTER_SECRET` e push via API Key vinculada a IP** | **Bun HTTP** |
 | Build | Compilação para EXE standalone e DLL | bun build --compile |
 
 ### 2.1 Fluxo: pull (cliente aplica update)
@@ -73,12 +73,13 @@ A ferramenta é organizada em camadas bem definidas para permitir extensibilidad
 
 1. Lê o `sysupdate.json` local com `localSource` e `target` de cada arquivo
 2. Valida que todos os `localSource` existem localmente
-3. Compacta todos os arquivos em um único bundle `.zip`
-4. Calcula SHA-256 de cada arquivo e do bundle completo
-5. Assina o bundle — stub na Alpha, Ed25519 na v1
-6. Faz `POST /publish` no servidor com JWT do publisher — envia bundle + metadados
-7. Servidor salva bundle no storage e metadados no SQLite
-8. Exibe confirmação com versão publicada e checksum do bundle
+3. Verifica se existe API Key salva localmente — se não, chama `POST /auth/register` automaticamente, salva a key retornada
+4. Compacta todos os arquivos em um único bundle `.zip`
+5. Calcula SHA-256 de cada arquivo e do bundle completo
+6. Assina o bundle — stub na Alpha, Ed25519 na v1
+7. Faz `POST /publish` no servidor com `X-Api-Key` no header — envia bundle + metadados
+8. Servidor salva bundle no storage e metadados no SQLite
+9. Exibe confirmação com versão publicada e checksum do bundle
 
 ---
 
@@ -285,8 +286,8 @@ O servidor é um proxy HTTP em Bun que fica entre o cliente e o storage (FTP/S3)
 | `GET` | `/manifest/:version` | Nenhuma | Retorna os metadados de uma versão específica. |
 | `GET` | `/bundle/:version` | Nenhuma | Stream do bundle `.zip` da versão solicitada. |
 | `GET` | `/health` | Nenhuma | Healthcheck do servidor. |
-| `POST` | `/publish` | JWT publisher | Recebe bundle + metadados, salva no SQLite e no storage. |
-| `POST` | `/auth/token` | — | Gera JWT do publisher na configuração inicial do servidor. |
+| `POST` | `/auth/register` | `X-Register-Secret` | Gera uma API Key vinculada ao IP do solicitante. Chamada automaticamente pela CLI no primeiro push. |
+| `POST` | `/publish` | `X-Api-Key` | Recebe bundle + metadados, salva no SQLite e no storage. |
 
 ### 6.2 Schema SQLite
 
@@ -307,6 +308,16 @@ CREATE TABLE release_files (
   release_id INTEGER NOT NULL REFERENCES releases(id),
   target     TEXT NOT NULL,
   checksum   TEXT NOT NULL
+);
+
+CREATE TABLE api_keys (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  key_hash   TEXT NOT NULL UNIQUE,   -- SHA-256 da key — nunca armazenada em texto claro
+  label      TEXT,                   -- nome descritivo (ex: "publisher-ci", "dev-local")
+  allowed_ip TEXT NOT NULL,          -- IP vinculado na geração
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  last_used  TEXT,
+  revoked    INTEGER DEFAULT 0       -- 0 = ativa, 1 = revogada
 );
 ```
 
@@ -339,48 +350,60 @@ O servidor monta o JSON dinamicamente a partir do SQLite — sem arquivo estáti
 }
 ```
 
-### 6.4 Autenticação JWT do Publisher
+### 6.4 Autenticação: Register Secret + API Key
 
-O JWT segue o padrão RFC 7519 com algoritmo HS256. É gerado via chamada HTTP direta — sem subcomando no CLI. O publisher gera o token imediatamente antes de cada push, usa e descarta. O token expira em 1 hora.
+O modelo usa dois segredos com escopos completamente separados. O `REGISTER_SECRET` fica no `.env` do servidor e no `.env` da CLI — é a prova de que a instância é legítima. A `API_KEY` é gerada no registro, vinculada ao IP, e é o que de fato autoriza o push. A CLI gerencia isso de forma transparente: o publisher nunca precisa chamar nada manualmente.
 
-**Geração do token:**
+**Registro (automático no primeiro push):**
 
 ```
-POST /auth/token
-  Content-Type: application/json
-  { "secret": "<AUTH_SECRET definido no .env do servidor>" }
+POST /auth/register
+  X-Register-Secret: <REGISTER_SECRET>
 
-  → servidor valida o secret
-  → gera JWT assinado com HS256:
-    {
-      "sub":         "publisher",
-      "permissions": ["publish"],
-      "iat":         1711025400,
-      "exp":         1711029000   ← iat + 3600 (1 hora)
-    }
-  → retorna { "token": "eyJhbGc..." }
+  → servidor valida o header X-Register-Secret
+  → captura IP da requisição (req.headers['x-forwarded-for'] ?? req.socket.remoteAddress)
+  → verifica se já existe key ativa para esse IP — se sim, rejeita com 409
+  → gera key: sysupdate_<32 bytes hex>  (ex: sysupdate_a3f7...)
+  → armazena SHA-256(key) + IP + label no SQLite (nunca a key em texto claro)
+  → retorna { "key": "sysupdate_a3f7...", "ip": "203.0.113.42" }
+    ↑ única vez que a key aparece em texto claro — CLI salva localmente e usa dali pra frente
 ```
 
-**Uso nas rotas protegidas:**
+**Push (toda invocação):**
 
 ```
 POST /publish
-  Authorization: Bearer eyJhbGc...
+  X-Api-Key: sysupdate_a3f7...
+
+  → servidor lê X-Api-Key
+  → calcula SHA-256(key recebida)
+  → busca no SQLite por key_hash + revoked = 0
+  → compara IP da requisição com allowed_ip registrado
+  → atualiza last_used
+  → libera ou rejeita com 401
 ```
 
-**Validação no servidor a cada requisição:**
+**Fluxo automático da CLI no push:**
 
 ```
-→ decodifica o JWT
-→ verifica assinatura com JWT_SECRET
-→ verifica expiração (exp)
-→ verifica permissions: ["publish"]
-→ libera ou rejeita com 401
+sysupdate push
+  → existe API Key salva localmente?
+      não → chama POST /auth/register com X-Register-Secret
+           → salva key retornada no .env local
+      sim → usa key existente
+  → prossegue com POST /publish usando X-Api-Key
 ```
 
-O `AUTH_SECRET` protege a geração do token — só quem administra o servidor sabe. O `JWT_SECRET` assina e verifica os tokens — nunca exposto externamente. O token expira em 1 hora por padrão, configurável via `TOKEN_TTL` no `.env` do servidor.
+**Revogação (operação manual no servidor):**
 
-O cliente nunca precisa de token — as rotas de leitura são públicas.
+```sql
+-- direto no SQLite do servidor
+UPDATE api_keys SET revoked = 1 WHERE allowed_ip = '203.0.113.42';
+```
+
+> ℹ A revogação é intencionalm­ente manual e local — não há rota HTTP para isso. Qualquer push subsequente com a key revogada retorna 401 imediatamente. Para reregistrar a mesma máquina, o operador remove ou revoga a entrada existente e a CLI faz o registro automaticamente no próximo push.
+
+O `REGISTER_SECRET` controla quem pode se registrar — distribuído junto com a CLI como variável de ambiente, nunca exposto em rota pública. A `API_KEY` controla quem pode publicar — gerada uma vez por máquina, vinculada ao IP, armazenada apenas como hash. O cliente pull nunca precisa de nenhum dos dois — as rotas de leitura são públicas.
 
 ### 6.5 Estrutura do Servidor
 
@@ -391,9 +414,9 @@ sysupdate-server/
   │   │   ├── manifest.ts    # GET /manifest/:version
   │   │   ├── bundle.ts      # GET /bundle/:version
   │   │   ├── publish.ts     # POST /publish
-  │   │   └── auth.ts        # POST /auth/token
+  │   │   └── auth.ts        # POST /auth/register
   │   ├── middleware/
-  │   │   └── jwt.ts         # validação JWT nas rotas protegidas
+  │   │   └── apikey.ts      # validação X-Api-Key + IP nas rotas protegidas
   │   ├── db/
   │   │   ├── schema.ts      # criação das tabelas SQLite
   │   │   └── releases.ts    # queries de releases e files
@@ -410,14 +433,19 @@ sysupdate-server/
 
 ```
 SERVER_PORT=3000
-JWT_SECRET=xxxx
-AUTH_SECRET=xxxx
-TOKEN_TTL=3600
+REGISTER_SECRET=xxxx
 STORAGE_PROVIDER=ftp
 STORAGE_HOST=ftp.interno.com
 STORAGE_USER=admin
 STORAGE_PASSWORD=****
 STORAGE_BASE_PATH=/releases
+```
+
+E no `.env` da CLI (publisher):
+
+```
+SERVER_URL=https://updates.interno.com
+REGISTER_SECRET=xxxx
 ```
 
 ---
@@ -522,9 +550,9 @@ sysupdate/
   │   │   │   ├── manifest.ts       # GET /manifest/:version
   │   │   │   ├── bundle.ts         # GET /bundle/:version
   │   │   │   ├── publish.ts        # POST /publish
-  │   │   │   └── auth.ts           # POST /auth/token
+  │   │   │   └── auth.ts           # POST /auth/register
   │   │   ├── middleware/
-  │   │   │   └── jwt.ts            # validação JWT nas rotas protegidas
+  │   │   │   └── apikey.ts         # validação X-Api-Key + IP nas rotas protegidas
   │   │   ├── db/
   │   │   │   ├── schema.ts         # criação das tabelas SQLite
   │   │   │   └── releases.ts       # queries de releases e files
@@ -544,7 +572,7 @@ sysupdate/
 
 | Fase | Tag | Prazo Est. | Entregas |
 |---|---|---|---|
-| 1 | Alpha | Semanas 1–3 | Setup Bun + TypeScript, servidor HTTP (rotas manifest/bundle/publish/auth), JWT publisher, FTP adapter no servidor, CLI base (pull/push), Security Layer stub |
+| 1 | Alpha | Semanas 1–3 | Setup Bun + TypeScript, servidor HTTP (rotas manifest/bundle/publish/auth/register), registro via `REGISTER_SECRET` + API Key vinculada a IP, FTP adapter no servidor, CLI base (pull/push com auto-register), Security Layer stub |
 | 2 | Alpha | Semanas 4–5 | Backup, state file, checksum SHA-256, rollback, validação de manifest (JSON Schema), rotação de backups |
 | 3 | Alpha | Semanas 6–7 | --dry-run, --verbose, testes E2E, proteção contra rollback malicioso no state, limpeza de .bak em background |
 | 4 | v1.0 | Semanas 8–9 | Security Layer Ed25519: assinatura no push, verificação no pull, state file assinado |
@@ -565,8 +593,9 @@ sysupdate/
 | Alpha | Permissão negada ao sobrescrever arquivo | Médio | Verifica permissão de escrita em todos os targets antes de iniciar qualquer download. |
 | Alpha | Disco cheio por acúmulo de backups | Baixo | Rotação automática por keepBackups. Alerta de espaço insuficiente antes do pull. |
 | Alpha | Servidor fora do ar durante pull | Médio | CLI detecta timeout e aborta com mensagem clara. Nenhum arquivo é alterado. |
-| Alpha | JWT do publisher vazado | Alto | JWT expira em 1 hora — janela de exposição mínima. Novo token gerado via POST /auth/token com AUTH_SECRET. |
-| Alpha | Manifest adulterado no servidor | Alto | Resolvido na v1.0 com assinatura Ed25519. Na Alpha: somente o publisher tem acesso via JWT de escrita. |
+| Alpha | API Key do publisher vazada | Alto | Vinculação por IP torna a key inútil fora da máquina de origem. Revogação via SQLite direto no servidor + CLI faz novo registro automaticamente no próximo push. |
+| Alpha | `REGISTER_SECRET` vazado | Médio | Permite que um IP desconhecido se registre. Mitigação: trocar o `REGISTER_SECRET` no `.env` do servidor e revogar keys suspeitas no SQLite. A key gerada ainda fica presa ao IP do invasor — não dá acesso às keys de outros publishers. |
+| Alpha | Manifest adulterado no servidor | Alto | Resolvido na v1.0 com assinatura Ed25519. Na Alpha: somente publishers registrados têm acesso via `X-Api-Key`, restrita ao IP cadastrado. |
 | v1.0 | Vazamento da chave privada Ed25519 | Alto | Chave privada nunca entra no repositório. Fica em secrets do CI e na máquina do publisher apenas. |
 
 ---
