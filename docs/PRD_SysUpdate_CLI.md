@@ -1,4 +1,4 @@
-# SysUpdate CLI — PDR
+# SysUpdate CLI — PRD
 
 > Ferramenta de Atualização de Sistemas com Backup e Rollback de Arquivos
 
@@ -9,7 +9,7 @@
 | Stack | Bun · TypeScript · FTP / S3 (MinIO) |
 | Distribuição | Binário único (EXE / DLL) — push / pull |
 | Escopo Alpha | Fluxo completo com bundle como padrão, sem segurança criptográfica |
-| Escopo v1.0 | Alpha + assinatura Ed25519 |
+| Escopo v1.0 | Alpha + identidade Ed25519 por instalação + comunicação assinada |
 | Escopo v2.0 | v1 + criptografia do manifest (X25519 + AES-256-GCM) |
 
 ---
@@ -31,11 +31,12 @@ O SysUpdate CLI é uma ferramenta de linha de comando desenvolvida em Bun + Type
 
 A segurança é adicionada de forma incremental após validação do fluxo base:
 
-| Fase | Segurança | Detalhe |
+| Fase | Mecanismo | Detalhe |
 |---|---|---|
-| Alpha | Nenhuma | Fluxo completo sem assinatura. Manifest e arquivos em texto claro. Foco em validar o fluxo. |
-| v1.0 | Assinatura Ed25519 | Manifest e arquivos assinados. CLI verifica antes de qualquer operação. Chave pública embutida no EXE. |
-| v2.0 | Criptografia do manifest | Manifest cifrado com X25519 + AES-256-GCM. Leitura indevida do manifest passa a ser impossível. |
+| Alpha | Nenhum | Fluxo completo sem assinatura. Foco em validar o fluxo end-to-end. |
+| v1.0 | Ed25519 + Roles | Identidade por instalação. Comunicação assinada por request. Roles pending / consumer / publisher. Servidor re-assina bundles. Chave pública embutida no binário. |
+| v1.1 | State file assinado | State file assinado. Code signing Authenticode no EXE. |
+| v2.0 | X25519 + AES-256-GCM | Manifest cifrado. Leitura indevida passa a ser impossível. |
 
 > ℹ O código já prevê o ponto de extensão `verifyManifest()` que na Alpha sempre retorna verdadeiro. Na v1.0 a implementação Ed25519 é plugada sem refatoração.
 
@@ -43,26 +44,24 @@ A segurança é adicionada de forma incremental após validação do fluxo base:
 
 ## 2. Arquitetura Geral
 
-A ferramenta é organizada em camadas bem definidas para permitir extensibilidade de provedores de storage e adição futura de camadas de segurança sem impacto no Core Engine.
-
 | Camada | Responsabilidade | Tecnologia |
 |---|---|---|
 | CLI / Commands | Parsing de argumentos, roteamento de subcomandos | Bun + citty |
 | Core Engine | Orquestração: backup, download, checksum, substituição | TypeScript puro |
-| Security Layer | `verifyManifest()` e `verifyFile()` — stub na Alpha, real na v1 | WebCrypto (Ed25519) |
+| Security Layer | `verifyBundle()`, `verifyFile()`, `signBundle()` — stub na Alpha, real na v1 | WebCrypto (Ed25519) |
 | Backup Manager | Cópia versionada dos arquivos antes de sobrescrever | fs nativo + zlib |
 | State Manager | Persiste histórico de versões aplicadas em JSON local | fs nativo |
-| **Server** | **Proxy HTTP entre cliente e storage — armazena metadados no SQLite, autentica registro via `REGISTER_SECRET` e push via API Key vinculada a IP** | **Bun HTTP** |
+| Server | Proxy HTTP — SQLite, identidade Ed25519, roles, re-assinatura de bundles | Bun HTTP |
 | Build | Compilação para EXE standalone e DLL | bun build --compile |
 
 ### 2.1 Fluxo: pull (cliente aplica update)
 
 1. Faz `GET /manifest/latest` no servidor (URL embutida no EXE — sem autenticação)
 2. Valida a resposta contra o JSON Schema
-3. Verifica assinatura via `verifyManifest()` — stub na Alpha, Ed25519 na v1
+3. Verifica assinatura do bundle via chave pública do servidor embutida no build — stub na Alpha
 4. Compara versão retornada com versão registrada no state file — aborta se igual ou menor
-5. Faz `GET /bundle/:version` no servidor — recebe stream do `.zip`
-6. Valida o checksum SHA-256 do bundle completo — aborta se não bater
+5. Faz `GET /bundle/:version` no servidor — recebe stream do `.zip` + assinatura `.sig`
+6. Recalcula SHA-256 do bundle localmente e verifica assinatura — aborta se não conferir
 7. Extrai o bundle em diretório temporário
 8. Para cada arquivo extraído: calcula checksum local via target → se igual, pula → se diferente ou ausente, faz backup → move o novo para o target
 9. Atualiza o state file com a nova versão aplicada
@@ -73,25 +72,26 @@ A ferramenta é organizada em camadas bem definidas para permitir extensibilidad
 
 1. Lê o `sysupdate.json` local com `localSource` e `target` de cada arquivo
 2. Valida que todos os `localSource` existem localmente
-3. Verifica se existe API Key salva localmente — se não, chama `POST /auth/register` automaticamente, salva a key retornada
+3. Verifica se existe par de chaves local — se não, executa `connect` automaticamente
 4. Compacta todos os arquivos em um único bundle `.zip`
 5. Calcula SHA-256 de cada arquivo e do bundle completo
-6. Assina o bundle — stub na Alpha, Ed25519 na v1
-7. Faz `POST /publish` no servidor com `X-Api-Key` no header — envia bundle + metadados
-8. Servidor salva bundle no storage e metadados no SQLite
-9. Exibe confirmação com versão publicada e checksum do bundle
+6. Assina o bundle com a chave privada local da instalação — stub na Alpha
+7. Faz `POST /publish` com assinatura Ed25519 no header — envia bundle + metadados
+8. Servidor valida assinatura, verifica role `publisher`, re-assina com chave privada própria
+9. Servidor salva `bundle.zip` + `bundle.zip.sig` no storage e metadados no SQLite
+10. Exibe confirmação com versão publicada e checksum do bundle
 
 ---
 
 ## 3. sysupdate.json — Arquivo de Trabalho do Publisher
 
-O `sysupdate.json` é um arquivo local da máquina do publisher — nunca é publicado no servidor. Serve como instrução para a CLI montar e enviar o bundle. O servidor armazena os metadados internamente no SQLite e os serve via API dinamicamente.
+O `sysupdate.json` é um arquivo local da máquina do publisher — nunca é publicado no servidor. Serve como instrução para a CLI montar e enviar o bundle.
 
 > ⚠ O `sysupdate.json` fica no repositório do projeto do publisher junto com o código. Nunca vai para o servidor de updates.
 
 | Campo | Tipo | Descrição |
 |---|---|---|
-| `version` | string | Versão semver do pacote (ex: 2.4.1) |
+| `version` | string | Versão semver do pacote (ex: `2.4.1`) |
 | `releaseDate` | string | Data ISO 8601 do pacote |
 | `description` | string | Descrição legível do update |
 | `minVersion` | string | Versão mínima do CLI necessária para aplicar este pacote |
@@ -130,18 +130,17 @@ O state file é um JSON local (`.sysupdate-state.json`) que registra o históric
 O pull tem dois níveis de validação — bundle e arquivo individual:
 
 **Nível 1 — bundle completo:**
+
 ```
-sha256(release-2.4.1.zip) == resposta.bundle.checksum?
+sha256(release-2.4.1.zip) == resposta.bundle.checksum  AND  assinatura do servidor válida?
   sim → extrai e processa
-  não → descarta, aborta (download corrompido ou adulterado)
+  não → descarta, aborta
 ```
 
 **Nível 2 — por arquivo após extração:**
-```
-resposta.files[i].target   = 'C:/SistemaX/app.exe'
-resposta.files[i].checksum = 'e3b0c44...'
 
-sha256('C:/SistemaX/app.exe') == 'e3b0c44...'?
+```
+sha256('C:/SistemaX/app.exe') == checksum do manifest?
   sim        → arquivo já está correto, pula
   não        → faz backup → move o arquivo extraído para o target
   não existe → move o arquivo extraído para o target (primeira instalação)
@@ -149,25 +148,24 @@ sha256('C:/SistemaX/app.exe') == 'e3b0c44...'?
 
 | Momento | Comparação | Resultado |
 |---|---|---|
-| Após baixar o bundle | sha256 do bundle vs checksum retornado pelo servidor | Iguais → extrai. Diferentes → aborta. |
-| Após extrair, antes de substituir | sha256 do arquivo local (via target) vs checksum do arquivo | Iguais → pula. Diferentes ou ausente → substitui. |
+| Após baixar o bundle | SHA-256 do bundle vs checksum retornado + verificação de assinatura do servidor | Iguais e assinatura válida → extrai. Divergência → aborta. |
+| Após extrair, antes de substituir | SHA-256 do arquivo local (via target) vs checksum do arquivo no manifest | Iguais → pula. Diferentes ou ausente → substitui. |
 
 ### 4.2 Proteção contra Rollback Malicioso
 
-O CLI nunca aceita uma resposta do servidor com versão menor ou igual à versão já registrada no state file. Isso impede que alguém publique uma versão antiga no servidor para forçar um downgrade:
+O CLI nunca aceita uma resposta do servidor com versão menor ou igual à versão já registrada no state file:
 
 ```
 versão do manifest (2.3.0) <= versão instalada (2.4.1)
-  → aborta: 'Manifest desatualizado. Versão instalada (2.4.1)
-    é igual ou superior ao manifest'
+  → aborta: 'Manifest desatualizado. Versão instalada (2.4.1) é igual ou superior'
 
 versão do manifest (2.4.1) > versão instalada (2.3.0)
   → prossegue com o pull normalmente
 ```
 
-> ⚠ O state file não é editável pelo usuário para fins de segurança — qualquer edição manual que tente rebaixar a versão registrada é detectada e rejeitada. Na v1 o state file será assinado junto com o manifest.
+> ⚠ O state file não é editável pelo usuário para fins de segurança. Na v1.1 o state file será assinado.
 
-### 4.2 Estrutura do State File
+### 4.3 Estrutura do State File
 
 ```json
 {
@@ -196,16 +194,7 @@ versão do manifest (2.4.1) > versão instalada (2.3.0)
 
 ### 5.1 CLI no Bundle
 
-O próprio executável do CLI pode ser incluído no bundle como qualquer outro arquivo. O publisher declara no `sysupdate.json`:
-
-```json
-{
-  "localSource": "C:/tools/sysupdate.exe",
-  "target":      "C:/SistemaX/sysupdate.exe"
-}
-```
-
-Como o Windows não permite deletar um EXE em execução mas permite renomeá-lo, o pull renomeia o executável atual para `.bak` antes de copiar o novo:
+O próprio executável do CLI pode ser incluído no bundle como qualquer outro arquivo. Como o Windows não permite deletar um EXE em execução mas permite renomeá-lo:
 
 ```
 pull detecta target == executável em execução
@@ -227,23 +216,14 @@ cleanupSelfBackup().catch(err => log.warn('backup cleanup failed', err))
 await runCommand(args)
 ```
 
-```
-cleanupSelfBackup():
-  → verifica se existe sysupdate.exe.bak no mesmo diretório
-  → existe → move para .sysupdate-backups/v{versão_anterior}/files/
-  → não existe → encerra silenciosamente
-```
-
 Se a limpeza falhar, só emite um warning — nunca interrompe o comando principal.
 
 ### 5.3 Estrutura de Backup
 
-Antes de qualquer substituição, o Backup Manager cria um snapshot versionado com timestamp. Os backups ficam em uma pasta oculta no diretório de trabalho do CLI:
-
 ```
 .sysupdate-backups/
   ├── v2.4.1_2026-03-21T14-32-10/
-  │     ├── manifest.json              (cópia do manifest aplicado)
+  │     ├── manifest.json
   │     └── files/
   │           ├── app.exe.bak
   │           └── config__settings.json.bak
@@ -282,12 +262,12 @@ O servidor é um proxy HTTP em Bun que fica entre o cliente e o storage (FTP/S3)
 
 | Método | Rota | Auth | Descrição |
 |---|---|---|---|
-| `GET` | `/manifest/latest` | Nenhuma | Retorna os metadados da versão mais recente. |
-| `GET` | `/manifest/:version` | Nenhuma | Retorna os metadados de uma versão específica. |
-| `GET` | `/bundle/:version` | Nenhuma | Stream do bundle `.zip` da versão solicitada. |
-| `GET` | `/health` | Nenhuma | Healthcheck do servidor. |
-| `POST` | `/auth/register` | `X-Register-Secret` | Gera uma API Key vinculada ao IP do solicitante. Chamada automaticamente pela CLI no primeiro push. |
-| `POST` | `/publish` | `X-Api-Key` | Recebe bundle + metadados, salva no SQLite e no storage. |
+| `GET` | `/manifest/latest` | Nenhuma | Retorna os metadados da versão mais recente |
+| `GET` | `/manifest/:version` | Nenhuma | Retorna os metadados de uma versão específica |
+| `GET` | `/bundle/:version` | Nenhuma | Stream do bundle `.zip` + `.sig` da versão solicitada |
+| `GET` | `/health` | Nenhuma | Healthcheck do servidor |
+| `POST` | `/connect` | HTTPS | Registra nova instalação — recebe `{ install_id, client_public_key }`. Chave do servidor nunca exposta via HTTP. |
+| `POST` | `/publish` | Assinatura Ed25519 + role `publisher` | Recebe bundle, valida assinatura, re-assina e publica |
 
 ### 6.2 Schema SQLite
 
@@ -300,6 +280,7 @@ CREATE TABLE releases (
   bundle_file     TEXT NOT NULL,
   bundle_checksum TEXT NOT NULL,
   release_date    TEXT NOT NULL,
+  published_by    TEXT NOT NULL,   -- install_id de quem publicou (audit log)
   created_at      TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -310,22 +291,21 @@ CREATE TABLE release_files (
   checksum   TEXT NOT NULL
 );
 
-CREATE TABLE api_keys (
-  id         INTEGER PRIMARY KEY AUTOINCREMENT,
-  key_hash   TEXT NOT NULL UNIQUE,   -- SHA-256 da key — nunca armazenada em texto claro
-  label      TEXT,                   -- nome descritivo (ex: "publisher-ci", "dev-local")
-  allowed_ip TEXT NOT NULL,          -- IP vinculado na geração
-  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-  last_used  TEXT,
-  revoked    INTEGER DEFAULT 0       -- 0 = ativa, 1 = revogada
+CREATE TABLE installations (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  install_id    TEXT NOT NULL UNIQUE,  -- UUID gerado na CLI
+  public_key    TEXT NOT NULL,         -- Ed25519 pública — nunca a privada
+  role          TEXT NOT NULL DEFAULT 'pending',  -- pending | consumer | publisher
+  label         TEXT,
+  registered_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  last_seen     TEXT,
+  revoked       INTEGER DEFAULT 0      -- 0 = ativa, 1 = revogada
 );
 ```
 
 > ℹ O número de backups retidos no cliente é controlado pela flag `--keep-backups` (padrão: 5). Não é responsabilidade do servidor.
 
 ### 6.3 Resposta do /manifest/:version
-
-O servidor monta o JSON dinamicamente a partir do SQLite — sem arquivo estático:
 
 ```json
 {
@@ -334,76 +314,37 @@ O servidor monta o JSON dinamicamente a partir do SQLite — sem arquivo estáti
   "description": "Correção de cálculo de impostos",
   "minVersion":  "1.0.0",
   "bundle": {
-    "file":     "release-2.4.1.zip",
-    "checksum": "f7c3bc1d808e04732adf..."
+    "file":      "release-2.4.1.zip",
+    "checksum":  "f7c3bc1d808e04732adf...",
+    "signature": "bundle.zip.sig"
   },
   "files": [
-    {
-      "target":   "C:/SistemaX/app.exe",
-      "checksum": "e3b0c44298fc1c..."
-    },
-    {
-      "target":   "C:/SistemaX/config/settings.json",
-      "checksum": "a1b2c3d4e5f6..."
-    }
+    { "target": "C:/SistemaX/app.exe",              "checksum": "e3b0c44298fc1c..." },
+    { "target": "C:/SistemaX/config/settings.json", "checksum": "a1b2c3d4e5f6..." }
   ]
 }
 ```
 
-### 6.4 Autenticação: Register Secret + API Key
+### 6.4 Configuração do Servidor
 
-O modelo usa dois segredos com escopos completamente separados. O `REGISTER_SECRET` fica no `.env` do servidor e no `.env` da CLI — é a prova de que a instância é legítima. A `API_KEY` é gerada no registro, vinculada ao IP, e é o que de fato autoriza o push. A CLI gerencia isso de forma transparente: o publisher nunca precisa chamar nada manualmente.
-
-**Registro (automático no primeiro push):**
-
-```
-POST /auth/register
-  X-Register-Secret: <REGISTER_SECRET>
-
-  → servidor valida o header X-Register-Secret
-  → captura IP da requisição (req.headers['x-forwarded-for'] ?? req.socket.remoteAddress)
-  → verifica se já existe key ativa para esse IP — se sim, rejeita com 409
-  → gera key: sysupdate_<32 bytes hex>  (ex: sysupdate_a3f7...)
-  → armazena SHA-256(key) + IP + label no SQLite (nunca a key em texto claro)
-  → retorna { "key": "sysupdate_a3f7...", "ip": "203.0.113.42" }
-    ↑ única vez que a key aparece em texto claro — CLI salva localmente e usa dali pra frente
+```env
+SERVER_PORT=3000
+STORAGE_PROVIDER=ftp
+STORAGE_HOST=ftp.interno.com
+STORAGE_USER=admin
+STORAGE_PASSWORD=****
+STORAGE_BASE_PATH=/releases
+# Geradas automaticamente no primeiro boot — nunca entram no VCS:
+# SERVER_PRIVATE_KEY=<ed25519 privada>
+# SERVER_PUBLIC_KEY=<ed25519 pública — obtida via `sysupdate-server pubkey` e embutida no build da CLI>
 ```
 
-**Push (toda invocação):**
+`.env` da CLI (publisher):
 
+```env
+SERVER_URL=https://updates.interno.com
+# install_id e private_key gerados no connect — nunca configurados manualmente
 ```
-POST /publish
-  X-Api-Key: sysupdate_a3f7...
-
-  → servidor lê X-Api-Key
-  → calcula SHA-256(key recebida)
-  → busca no SQLite por key_hash + revoked = 0
-  → compara IP da requisição com allowed_ip registrado
-  → atualiza last_used
-  → libera ou rejeita com 401
-```
-
-**Fluxo automático da CLI no push:**
-
-```
-sysupdate push
-  → existe API Key salva localmente?
-      não → chama POST /auth/register com X-Register-Secret
-           → salva key retornada no .env local
-      sim → usa key existente
-  → prossegue com POST /publish usando X-Api-Key
-```
-
-**Revogação (operação manual no servidor):**
-
-```sql
--- direto no SQLite do servidor
-UPDATE api_keys SET revoked = 1 WHERE allowed_ip = '203.0.113.42';
-```
-
-> ℹ A revogação é intencionalm­ente manual e local — não há rota HTTP para isso. Qualquer push subsequente com a key revogada retorna 401 imediatamente. Para reregistrar a mesma máquina, o operador remove ou revoga a entrada existente e a CLI faz o registro automaticamente no próximo push.
-
-O `REGISTER_SECRET` controla quem pode se registrar — distribuído junto com a CLI como variável de ambiente, nunca exposto em rota pública. A `API_KEY` controla quem pode publicar — gerada uma vez por máquina, vinculada ao IP, armazenada apenas como hash. O cliente pull nunca precisa de nenhum dos dois — as rotas de leitura são públicas.
 
 ### 6.5 Estrutura do Servidor
 
@@ -414,14 +355,14 @@ sysupdate-server/
   │   │   ├── manifest.ts    # GET /manifest/:version
   │   │   ├── bundle.ts      # GET /bundle/:version
   │   │   ├── publish.ts     # POST /publish
-  │   │   └── auth.ts        # POST /auth/register
+  │   │   └── connect.ts     # POST /connect
   │   ├── middleware/
-  │   │   └── apikey.ts      # validação X-Api-Key + IP nas rotas protegidas
+  │   │   └── auth.ts        # validação assinatura Ed25519 + role
   │   ├── db/
-  │   │   ├── schema.ts      # criação das tabelas SQLite
-  │   │   └── releases.ts    # queries de releases e files
+  │   │   ├── schema.ts
+  │   │   └── releases.ts
   │   ├── storage/
-  │   │   ├── ftp.ts         # adapter FTP
+  │   │   ├── ftp.ts
   │   │   └── s3.ts          # adapter S3/MinIO (v1.2)
   │   └── main.ts
   ├── data/
@@ -429,58 +370,179 @@ sysupdate-server/
   └── package.json
 ```
 
-### 6.6 Configuração do Servidor
-
-```
-SERVER_PORT=3000
-REGISTER_SECRET=xxxx
-STORAGE_PROVIDER=ftp
-STORAGE_HOST=ftp.interno.com
-STORAGE_USER=admin
-STORAGE_PASSWORD=****
-STORAGE_BASE_PATH=/releases
-```
-
-E no `.env` da CLI (publisher):
-
-```
-SERVER_URL=https://updates.interno.com
-REGISTER_SECRET=xxxx
-```
-
 ---
 
 ## 7. Security Layer
 
-A Security Layer é isolada do Core Engine via interface. Na Alpha, as funções retornam verdadeiro sem verificar nada. Na v1.0 a implementação Ed25519 é plugada sem alterar nenhuma outra camada.
+A Security Layer isola toda a criptografia do Core Engine via interface. Na Alpha as funções retornam verdadeiro/vazio sem verificar nada. Na v1.0 a implementação Ed25519 é plugada sem alterar nenhuma outra camada.
 
-### 7.1 Interface de Segurança
+### 7.1 Modelo de Segurança — Visão Geral
+
+O modelo é baseado em **identidade por instalação**, sem segredos configurados pelo usuário. Toda autenticação é criptográfica e transparente. A única interação humana necessária é o admin aprovar quem pode publicar.
+
+Existem cinco camadas independentes, cada uma fechando um vetor de ataque diferente.
+
+---
+
+#### Camada 1 — Identidade da Instalação
+
+Ao instalar a CLI, um par de chaves **Ed25519** é gerado localmente na máquina do usuário. A chave privada nunca sai dessa máquina. A chave pública é enviada ao servidor junto com um `install_id` (UUID único por instalação) no momento do `connect`.
+
+```
+sysupdate connect <SERVER_URL>
+
+→ gera par Ed25519 local (privada nunca sai da máquina)
+→ HTTPS POST /connect { install_id, client_public_key }
+→ servidor registra: role = pending
+
+# chave pública do servidor nunca transita via HTTP
+# admin obtém manualmente e injeta no CI como secret:
+sysupdate-server pubkey
+→ imprime a chave pública no terminal
+→ admin cola no CI: SERVER_PUBLIC_KEY=<chave>
+→ CI injeta no build via variável de ambiente
+```
+
+> ✓ Nenhum segredo precisa ser distribuído, configurado ou digitado pelo usuário.
+
+---
+
+#### Camada 2 — Comunicação Autenticada
+
+Cada request enviado pela CLI é assinado com a chave privada local. O payload da assinatura inclui:
+
+| Campo | Função |
+|---|---|
+| `install_id` | Identifica quem está enviando |
+| `timestamp` | Janela de validade de 30 segundos |
+| `nonce` | UUID único por request |
+| `body_hash` | SHA-256 do payload |
+
+O servidor verifica a assinatura usando a chave pública registrada para aquele `install_id`. A verificação é stateless — não requer consulta a banco de dados.
+
+> ✓ Replay attacks são impossíveis — timestamp e nonce tornam cada request único e com validade curta.
+
+---
+
+#### Camada 3 — Autorização por Role
+
+Autenticação e autorização são separadas. Toda CLI autenticada pode se comunicar com o servidor, mas publicar bundles exige promoção explícita pelo admin.
+
+| Role | Permissões |
+|---|---|
+| `pending` | Recém-registrada, sem acesso a nenhuma operação |
+| `consumer` | Baixa bundles (`GET /manifest`, `GET /bundle`) |
+| `publisher` | Baixa e publica bundles. Exige aprovação explícita do admin. |
+
+**Gerenciamento via CLI do servidor:**
+
+```bash
+# listar instalações registradas
+sysupdate-server list
+
+# promover a publisher
+sysupdate-server approve <install_id>
+
+# revogar (volta para consumer imediatamente)
+sysupdate-server revoke <install_id>
+```
+
+> ✓ Um atacante que registra uma instalação falsa consegue no máximo role `consumer` — publish está bloqueado sem aprovação explícita do admin.
+
+---
+
+#### Camada 4 — Integridade dos Bundles
+
+Esta é a camada mais crítica. Três chaves envolvidas, cada uma com função específica:
+
+| Chave | Dono | Função |
+|---|---|---|
+| Privada do publisher | Máquina do publisher | Assina o bundle antes de enviar ao servidor |
+| Pública do publisher | Servidor | Valida que o bundle veio de quem diz ser |
+| Privada do servidor | Servidor | Re-assina bundles válidos antes de distribuir |
+| Pública do servidor | Embutida no build da CLI | Consumers validam bundles recebidos |
+
+**Fluxo no servidor ao receber um bundle (`POST /publish`):**
+
+1. Valida a assinatura do publisher com a chave pública registrada para aquele `install_id`
+2. Verifica que a versão é maior que a última publicada (sem downgrade)
+3. Calcula o SHA-256 do bundle
+4. Assina esse hash com a chave privada do próprio servidor
+5. Salva `bundle.zip`, `bundle.zip.sig`, versão e `install_id` de quem publicou no audit log
+
+> ✓ Mesmo que um publisher legítimo seja comprometido, o atacante ainda precisaria que o servidor aceitasse e re-assinasse o bundle malicioso. O servidor é o único trust anchor.
+
+**Fluxo na CLI consumer ao baixar um bundle:**
+
+1. Recebe `bundle.zip` + `bundle.zip.sig`
+2. Recalcula o SHA-256 do arquivo recebido localmente
+3. Verifica a assinatura usando a **chave pública do servidor embutida no binário**
+4. Se a assinatura não conferir: aborta, nunca executa
+5. Se conferir: processa o bundle
+
+> ✓ A chave pública do servidor é embutida em tempo de compilação, nunca buscada em runtime — elimina o vetor de ataque via DNS spoofing.
+
+---
+
+#### Camada 5 — Auto-update Seguro
+
+O binário da CLI pode ser atualizado automaticamente via bundle, com mecanismo idêntico ao da Camada 4. A assinatura do servidor embutida no binário atual garante que um servidor falso não consiga distribuir uma versão maliciosa.
+
+---
+
+### 7.2 Interface de Segurança
 
 ```typescript
 interface SecurityLayer {
   // Alpha: sempre retorna true
-  // v1.0:  verifica assinatura Ed25519 com chave pública embutida
-  verifyManifest (manifestBytes: Uint8Array, sig: Uint8Array): Promise<boolean>
-  verifyFile     (fileBytes: Uint8Array,     sig: Uint8Array): Promise<boolean>
+  // v1.0:  verifica assinatura Ed25519 com chave pública do servidor embutida
+  verifyBundle (bundleBytes: Uint8Array, sig: Uint8Array): Promise<boolean>
+  verifyFile   (fileBytes: Uint8Array,   sig: Uint8Array): Promise<boolean>
 
   // Alpha: retorna buffer vazio
-  // v1.0:  assina com chave privada do publisher (só no push)
-  signManifest   (manifestBytes: Uint8Array): Promise<Uint8Array>
-  signFile       (fileBytes: Uint8Array):     Promise<Uint8Array>
+  // v1.0:  assina com chave privada local da instalação (só no push)
+  signBundle   (bundleBytes: Uint8Array): Promise<Uint8Array>
 }
 ```
 
-### 7.2 Roadmap de Segurança
+### 7.3 O que Deliberadamente Não Existe
+
+| Abordagem excluída | Motivo |
+|---|---|
+| API Key fixa no binário | Qualquer pessoa extrai com `strings ./cli` |
+| `GET /api/pubkey` em runtime | Abre vetor via DNS spoofing — chave pública do servidor é obtida manualmente pelo admin e embutida no build |
+| REGISTER_SECRET compartilhado | Segredo que precisa ser distribuído é um ponto fraco — substituído por identidade criptográfica |
+| JWT com refresh token | Complexidade desnecessária sem auth server central |
+| mTLS | Inviável em máquinas de usuários sem gestão de certificados |
+| Senha ou login de usuário | Não há interface interativa no fluxo |
+
+### 7.4 Setup Inicial de uma Instância
+
+```bash
+# 1. servidor sobe e gera par Ed25519 automaticamente no primeiro boot
+docker compose up
+
+# 2. admin copia a chave pública do servidor manualmente para o CI
+sysupdate-server pubkey
+# → imprime chave pública no terminal
+# → admin cola no secret do CI: SERVER_PUBLIC_KEY=<chave>
+# → CI injeta no build via variável de ambiente (nunca via HTTP)
+
+# 3. CLI conecta (única config necessária — resto é automático)
+sysupdate connect https://servidor.empresa.com
+
+# 4. admin aprova publishers quando necessário
+sysupdate-server approve <install_id>
+```
+
+### 7.5 Roadmap de Segurança
 
 | Fase | Mecanismo | Detalhe |
 |---|---|---|
-| Alpha | Nenhum | `verifyManifest()` e `verifyFile()` sempre retornam true. `signManifest()` e `signFile()` retornam buffer vazio. Sem `.sig` no storage. |
-| v1.0 | Ed25519 — assinatura | Publisher assina o bundle com chave privada. CLI verifica com chave pública embutida no EXE. Arquivos `.sig` publicados no servidor junto com o bundle. |
-| v1.0 | Proteção do state file | State file assinado junto com o manifest. CLI rejeita state file com versão manipulada. |
-| v1.1 | Code signing do EXE | `sysupdate.exe` assinado com certificado Authenticode. SO valida antes de executar. |
-| v2.0 | X25519 + AES-256-GCM | Manifest cifrado. Chave AES gerada por pacote, cifrada com X25519 (chave pública do CLI embutida). Leitura indevida do manifest passa a ser impossível. |
-
-> ℹ As chaves Ed25519 e X25519 são geradas pelo servidor na primeira inicialização e salvas no `.env`. A chave pública é embutida no EXE do cliente no momento do build via variável de ambiente no CI. A chave privada nunca sai do servidor.
+| Alpha | Nenhum | `verifyBundle()` e `verifyFile()` sempre retornam `true`. `signBundle()` retorna buffer vazio. |
+| v1.0 | Ed25519 — identidade + assinatura | Geração de par no `connect`. Comunicação assinada por request com timestamp + nonce. Roles. Re-assinatura pelo servidor. Chave pública embutida no build. |
+| v1.1 | State file + code signing | State file assinado. CLI rejeita state file com versão manipulada. Authenticode no EXE. |
+| v2.0 | X25519 + AES-256-GCM | Manifest cifrado. Chave AES por pacote, cifrada com X25519. Leitura indevida passa a ser impossível. |
 
 ---
 
@@ -492,6 +554,7 @@ Todos os subcomandos seguem a convenção: `sysupdate <comando> [flags]`. O bin�
 |---|---|---|
 | Alpha | `pull [--version v]` | Baixa e aplica o pacote mais recente. Com `--version`, aplica uma versão específica. |
 | Alpha | `push` | Compacta os arquivos, calcula checksums e publica no servidor. |
+| Alpha | `connect <url>` | Registra esta instalação no servidor — gera par Ed25519 local e envia a chave pública. |
 | Alpha | `rollback [--to v]` | Reverte o último pull. Com `--to`, reverte em cascata até a versão alvo. |
 | Alpha | `status` | Exibe versão instalada, histórico de pulls e snapshots de backup disponíveis. |
 | Alpha | `backup:list` | Lista todos os snapshots com data, versão e tamanho em disco. |
@@ -510,7 +573,7 @@ Todos os subcomandos seguem a convenção: `sysupdate <comando> [flags]`. O bin�
 
 ## 9. Build e Distribuição
 
-O Bun compila o projeto em um único executável standalone via `bun build --compile`, sem necessidade de runtime instalado na máquina do cliente. A chave pública Ed25519 é injetada no binário como variável de ambiente no momento do build a partir da v1.0.
+O Bun compila o projeto em um único executável standalone via `bun build --compile`, sem necessidade de runtime instalado na máquina do cliente. A chave pública Ed25519 do servidor é injetada no binário como variável de ambiente no momento do build a partir da v1.0.
 
 ### 9.1 Targets de Compilação
 
@@ -525,11 +588,12 @@ O Bun compila o projeto em um único executável standalone via `bun build --com
 
 ```
 sysupdate/
-  ├── cli/                          # binário do cliente
+  ├── cli/
   │   ├── src/
   │   │   ├── commands/
   │   │   │   ├── pull.ts
   │   │   │   ├── push.ts
+  │   │   │   ├── connect.ts
   │   │   │   ├── rollback.ts
   │   │   │   ├── status.ts
   │   │   │   └── backup.ts
@@ -542,22 +606,22 @@ sysupdate/
   │   │   │   ├── interface.ts      # SecurityLayer interface
   │   │   │   ├── noop.ts           # Alpha: stub sem verificação
   │   │   │   └── ed25519.ts        # v1.0: implementação real
-  │   │   └── main.ts               # entry point CLI
+  │   │   └── main.ts
   │   └── package.json
-  ├── server/                       # servidor HTTP proxy
+  ├── server/
   │   ├── src/
   │   │   ├── routes/
   │   │   │   ├── manifest.ts       # GET /manifest/:version
   │   │   │   ├── bundle.ts         # GET /bundle/:version
   │   │   │   ├── publish.ts        # POST /publish
-  │   │   │   └── auth.ts           # POST /auth/register
+  │   │   │   └── connect.ts        # POST /connect
   │   │   ├── middleware/
-  │   │   │   └── apikey.ts         # validação X-Api-Key + IP nas rotas protegidas
+  │   │   │   └── auth.ts           # validação assinatura Ed25519 + role
   │   │   ├── db/
-  │   │   │   ├── schema.ts         # criação das tabelas SQLite
-  │   │   │   └── releases.ts       # queries de releases e files
+  │   │   │   ├── schema.ts
+  │   │   │   └── releases.ts
   │   │   ├── storage/
-  │   │   │   ├── ftp.ts            # adapter FTP
+  │   │   │   ├── ftp.ts
   │   │   │   └── s3.ts             # adapter S3/MinIO (v1.2)
   │   │   └── main.ts
   │   ├── data/
@@ -572,14 +636,14 @@ sysupdate/
 
 | Fase | Tag | Prazo Est. | Entregas |
 |---|---|---|---|
-| 1 | Alpha | Semanas 1–3 | Setup Bun + TypeScript, servidor HTTP (rotas manifest/bundle/publish/auth/register), registro via `REGISTER_SECRET` + API Key vinculada a IP, FTP adapter no servidor, CLI base (pull/push com auto-register), Security Layer stub |
-| 2 | Alpha | Semanas 4–5 | Backup, state file, checksum SHA-256, rollback, validação de manifest (JSON Schema), rotação de backups |
-| 3 | Alpha | Semanas 6–7 | --dry-run, --verbose, testes E2E, proteção contra rollback malicioso no state, limpeza de .bak em background |
-| 4 | v1.0 | Semanas 8–9 | Security Layer Ed25519: assinatura no push, verificação no pull, state file assinado |
-| 5 | v1.1 | Semana 10 | FTPS/SFTP no servidor, S3/MinIO no servidor, code signing do EXE (Authenticode) |
-| 6 | v1.x | Semanas 11–12 | Build EXE multi-plataforma, DLL Windows com API pública, pipeline CI/CD |
-| 7 | v2.0 | Futuro | Criptografia do manifest: X25519 + AES-256-GCM. |
-| 8 | v3.0 | Futuro | Download por chunks para bundles grandes — otimização para conexões lentas. |
+| 1 | Alpha | Sem. 1–3 | Setup Bun + TypeScript, servidor HTTP (rotas manifest/bundle/publish/connect), FTP adapter, CLI base (pull/push/connect), Security Layer stub |
+| 2 | Alpha | Sem. 4–5 | Backup, state file, checksum SHA-256, rollback, validação JSON Schema, rotação de backups |
+| 3 | Alpha | Sem. 6–7 | `--dry-run`, `--verbose`, testes E2E, proteção contra rollback malicioso, limpeza de `.bak` em background |
+| 4 | v1.0 | Sem. 8–9 | Security Layer Ed25519: geração de par no `connect`, comunicação assinada por request, roles, re-assinatura de bundles pelo servidor, chave pública embutida no build |
+| 5 | v1.1 | Sem. 10 | State file assinado, FTPS/SFTP, S3/MinIO, code signing Authenticode |
+| 6 | v1.x | Sem. 11–12 | Build EXE multi-plataforma, DLL Windows com API pública, pipeline CI/CD |
+| 7 | v2.0 | Futuro | Criptografia do manifest: X25519 + AES-256-GCM |
+| 8 | v3.0 | Futuro | Download por chunks para bundles grandes — otimização para conexões lentas |
 
 ---
 
@@ -587,16 +651,17 @@ sysupdate/
 
 | Fase | Risco | Impacto | Mitigação |
 |---|---|---|---|
-| Alpha | Falha de rede no meio do pull | Alto | Bundle baixado para diretório temporário. Operação atômica: substituições só ocorrem após bundle validado. State file só atualizado após todas as substituições. |
-| Alpha | Checksum inválido do bundle baixado | Alto | Valida SHA-256 do bundle antes de extrair. Aborta e descarta o bundle se não bater. |
-| Alpha | Arquivo em uso no Windows | Médio | Detecta lock antes de iniciar. Orienta usuário a parar o processo antes do pull. |
-| Alpha | Permissão negada ao sobrescrever arquivo | Médio | Verifica permissão de escrita em todos os targets antes de iniciar qualquer download. |
-| Alpha | Disco cheio por acúmulo de backups | Baixo | Rotação automática por keepBackups. Alerta de espaço insuficiente antes do pull. |
+| Alpha | Falha de rede no meio do pull | Alto | Bundle em diretório temporário. Operação atômica. State file só atualizado após todas as substituições. |
+| Alpha | Checksum inválido do bundle | Alto | Valida SHA-256 antes de extrair. Aborta e descarta se não bater. |
+| Alpha | Arquivo em uso no Windows | Médio | Detecta lock antes de iniciar. Orienta usuário a parar o processo. |
+| Alpha | Permissão negada ao sobrescrever | Médio | Verifica permissão de escrita em todos os targets antes de iniciar qualquer download. |
+| Alpha | Disco cheio por acúmulo de backups | Baixo | Rotação automática por `keepBackups`. Alerta de espaço insuficiente antes do pull. |
 | Alpha | Servidor fora do ar durante pull | Médio | CLI detecta timeout e aborta com mensagem clara. Nenhum arquivo é alterado. |
-| Alpha | API Key do publisher vazada | Alto | Vinculação por IP torna a key inútil fora da máquina de origem. Revogação via SQLite direto no servidor + CLI faz novo registro automaticamente no próximo push. |
-| Alpha | `REGISTER_SECRET` vazado | Médio | Permite que um IP desconhecido se registre. Mitigação: trocar o `REGISTER_SECRET` no `.env` do servidor e revogar keys suspeitas no SQLite. A key gerada ainda fica presa ao IP do invasor — não dá acesso às keys de outros publishers. |
-| Alpha | Manifest adulterado no servidor | Alto | Resolvido na v1.0 com assinatura Ed25519. Na Alpha: somente publishers registrados têm acesso via `X-Api-Key`, restrita ao IP cadastrado. |
-| v1.0 | Vazamento da chave privada Ed25519 | Alto | Chave privada nunca entra no repositório. Fica em secrets do CI e na máquina do publisher apenas. |
+| v1.0 | Instalação falsa tenta publicar | Alto | Role default é `pending`. Publish exige aprovação explícita do admin. Autenticação criptográfica — sem segredo compartilhado. |
+| v1.0 | Replay attack em request | Alto | Payload de assinatura inclui timestamp (janela de 30s) + nonce UUID único por request. |
+| v1.0 | Chave privada do servidor vazada | Alto | Gerada no primeiro boot, nunca entra no VCS. Fica em secrets do CI. Rotação exige novo build da CLI. |
+| v1.0 | Publisher legítimo comprometido | Alto | Servidor re-assina após validar — bundle malicioso ainda precisa ser aceito pelo servidor. Revogação imediata via `sysupdate-server revoke`. |
+| v1.0 | Manifest adulterado no servidor | Alto | CLI consumers verificam assinatura do servidor embutida no build — sem consulta DNS em runtime. |
 
 ---
 
@@ -607,8 +672,9 @@ sysupdate/
 | Parser de argumentos CLI | citty (leve, nativo Bun) vs commander.js (mais maduro). Recomendação: citty |
 | Compressão de backups | Sem compressão vs gzip vs zstd. Avaliar pelo tamanho típico dos arquivos do sistema alvo |
 | Multi-ambiente (dev/staging/prod) | Um `sysupdate.json` por ambiente vs variável `SYSUPDATE_ENV` selecionando seção do arquivo |
-| Notificações pós-pull | Sem notificação vs webhook configurável vs log estruturado JSON. Avaliar necessidade real |
-| Deploy do servidor | VPS própria vs serviço cloud vs mesma máquina do FTP. Impacta requisitos de infraestrutura. |
+| Notificações pós-pull | Sem notificação vs webhook configurável vs log estruturado JSON |
+| Deploy do servidor | VPS própria vs serviço cloud vs mesma máquina do FTP |
+| Rotação de chaves Ed25519 (v1.0) | Sem rotação vs rotação manual via novo boot do servidor + rebuild da CLI |
 | Banco de dados (futuro) | Migrations e integração com DB fora do escopo até v2+. Reavaliar após validação completa do fluxo de arquivos |
 
 > ℹ Revisar as decisões em aberto ao final da Fase 1 (Alpha), com base no feedback dos primeiros testes em ambiente real.
