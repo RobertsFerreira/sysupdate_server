@@ -1,4 +1,5 @@
 import { z } from "zod";
+import fs from 'fs'
 
 const DEFAULT_SERVER_PORT = 3000;
 
@@ -8,7 +9,13 @@ const requiredRegisterSecretSchema = z.preprocess(
   z.string().min(1, "Missing required environment variable: REGISTER_SECRET")
 );
 
+const dbPathSchema = z.string().refine(
+  (path) => fs.existsSync(path), 
+  { message: "Database file does not exist" }
+);
+
 const serverConfigSchema = z.object({
+  DATABASE_URL: dbPathSchema,
   SERVER_PORT: z.coerce.number().int().positive().default(DEFAULT_SERVER_PORT),
   REGISTER_SECRET: requiredRegisterSecretSchema,
   STORAGE_PROVIDER: z.string().trim(),
