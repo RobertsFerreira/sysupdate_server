@@ -81,7 +81,7 @@ export function createReleaseRepository(db: DbClient) {
     });
   }
 
-  function get_latest_release(): ReleaseResponseDTO | null {
+  function getLatestRelease(): ReleaseResponseDTO | null {
     const releasesList = selectAllReleases();
 
     const validReleases = releasesList
@@ -91,7 +91,7 @@ export function createReleaseRepository(db: DbClient) {
     return validReleases.at(0) ?? null;
   }
 
-  function get_release_by_version(version: string): ReleaseResponseDTO | null {
+  function getReleaseByVersion(version: string): ReleaseResponseDTO | null {
     const normalizedVersion = assertValidVersion(version);
     const release = db.select().from(releases).where(eq(releases.version, normalizedVersion)).get();
 
@@ -115,9 +115,9 @@ export function createReleaseRepository(db: DbClient) {
   }
 
   return {
-    insert_release: insertRelease,
-    get_latest_release,
-    get_release_by_version,
+    insertRelease,
+    getLatestRelease,
+    getReleaseByVersion,
   };
 }
 
