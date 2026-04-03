@@ -102,15 +102,14 @@ Criar e inicializar o banco de dados SQLite do servidor com as tabelas `releases
 - [X] Tabela `installations` criada com colunas: `id`, `install_id` (TEXT UNIQUE), `public_key` (Ed25519 pública —**** nunca a privada), `role` (TEXT — `pending | consumer | publisher`), `label`, `registered_at`, `last_seen`, `revoked` (0=ativa, 1=revogada)
 - [X] Função `insertRelease(data)` implementada em `db/releases.ts`
 - [X] Função `getLatestRelease()` implementada — retorna a release com maior versão semver
-- [X] Função `getReleaseByVersion(version)` implementada — retorna release específica ou `null`
-- [X] Função `getReleaseFiles(releaseId)` implementada — retorna array de arquivos da release
+- [X] Função `getReleaseByVersion(version)` — retorna release específica ou `null`
 - [ ] Função `insertInstallation(installId, publicKey, label?)` implementada em `db/installations.ts` — role inicial sempre `pending`
 - [ ] Função `findInstallation(installId)` implementada — retorna instalação ativa (não revogada) ou `null`
 - [ ] Função `updateInstallationLastSeen(installId)` implementada
 - [ ] Função `setInstallationRole(installId, role)` implementada
 - [ ] Função `revokeInstallation(installId)` implementada — seta `revoked = 1`
-- [X] Banco recriado corretamente se `data/sysupdate.db` não existir
-- [X] `data/sysupdate.db` está no `.gitignore`
+- [X] Banco recriado corretamente se `data/db/sysupdate.sqlite` não existir
+- [X] `data/db/sysupdate.sqlite` está no `.gitignore`
 
 ---
 

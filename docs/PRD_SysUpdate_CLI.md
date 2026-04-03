@@ -329,6 +329,7 @@ CREATE TABLE installations (
 
 ```env
 SERVER_PORT=3000
+DATABASE_URL='data\db\sysupdate.sqlite'
 STORAGE_PROVIDER=ftp
 STORAGE_HOST=ftp.interno.com
 STORAGE_USER=admin
