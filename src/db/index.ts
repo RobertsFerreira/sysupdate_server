@@ -1,10 +1,17 @@
-import { env } from '@/config/env';
-import { drizzle } from 'drizzle-orm/bun-sqlite';
-import { schema } from './schemas/index';
+import { drizzle } from "drizzle-orm/bun-sqlite";
 import { Database } from "bun:sqlite";
 
-const database = new Database(env.DATABASE_URL, {create: true});
-export const db = drizzle(database, {
+import { schema } from "./schemas/index";
+import { env } from "@/config/env";
+
+export function createDb(databaseUrl: string) {
+  const database = new Database(databaseUrl, { create: true });
+
+  return drizzle(database, {
     schema,
-	casing: 'snake_case',
-});
+    casing: "snake_case",
+  });
+}
+
+export type DbClient = ReturnType<typeof createDb>;
+export const db = createDb(env.DATABASE_URL);
