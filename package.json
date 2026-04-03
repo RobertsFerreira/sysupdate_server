@@ -7,6 +7,8 @@
   "scripts": {
     "test": "bun test",
     "dev": "bun run --watch main.ts",
+    "db:generate": "bun --env-file .env --bun drizzle-kit generate",
+    "db:migrate": "bun --env-file .env --bun drizzle-kit migrate",
     "lint": "bunx biome lint --write",
     "formatter": "bunx biome format --write",
     "check": "bunx biome check --write",
