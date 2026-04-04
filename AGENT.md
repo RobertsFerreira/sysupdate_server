@@ -74,6 +74,14 @@ Use os AGENTs de escopo em `src/*/AGENT.md` para detalhes locais.
 
 Regra geral: sem acoplamento desnecessario entre camadas.
 
+Padrao de erro entre camadas (obrigatorio para `repositories`, `services` e
+`routes`):
+
+- Criar erros custom por dominio/caso de uso (evitar `throw new Error` generico)
+- Lancar erros custom nas camadas internas (`repositories` e `services`)
+- Tratar mapeamento final de erro no **global error handler** da API
+- Evitar `try/catch` local em rotas para montar resposta ad-hoc
+
 ## 7) Regras de implementacao
 
 - Runtime: Bun + TypeScript ESM
@@ -82,6 +90,11 @@ Regra geral: sem acoplamento desnecessario entre camadas.
 - Evitar dependencias novas sem necessidade clara da task
 - Implementar exatamente o escopo da task (sem feature creep)
 - Preservar stubs quando a task pedir apenas esqueleto
+- Padronizar erros custom para suporte ao global error handler
+- Usar sempre os padroes ja adotados no projeto e design patterns quando fizer
+  sentido
+- Evitar overengineering e abstrações desnecessarias; priorizar simplicidade e
+  manutencao
 
 ## 8) Padrao de codigo (Biome)
 
