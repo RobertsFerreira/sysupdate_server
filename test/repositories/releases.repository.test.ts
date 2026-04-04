@@ -1,7 +1,10 @@
 import { join } from "node:path";
 import { createDb, type DbClient } from "@/db";
 import { releaseFiles, releases } from "@/db/schemas/releases.schema";
-import { InvalidReleaseVersionError } from "@/db/errors/release.errors";
+import {
+  InvalidReleaseVersionError,
+  ReleaseAlreadyExistsError,
+} from "@/db/errors/release.errors";
 import {
   createReleaseRepository,
   type ReleaseRepository,
@@ -42,11 +45,11 @@ describe("db/releases", () => {
     const inserted = releaseRepository.insertRelease({
       version: "2.4.1",
       description: "Correcoes de estabilidade",
-      min_version: "1.0.0",
-      bundle_file: "release-2.4.1.zip",
-      bundle_checksum: "bundle-checksum-241",
-      release_date: "2026-03-21T14:00:00Z",
-      published_by: "publisher-1",
+      minVersion: "1.0.0",
+      bundleFile: "release-2.4.1.zip",
+      bundleChecksum: "bundle-checksum-241",
+      releaseDate: "2026-03-21T14:00:00Z",
+      publishedBy: "publisher-1",
       files: [
         { target: "C:/SistemaX/app.exe", checksum: "checksum-app" },
         { target: "C:/SistemaX/config.json", checksum: "checksum-config" },
@@ -81,11 +84,11 @@ describe("db/releases", () => {
       releaseRepository.insertRelease({
         version: "invalid-version",
         description: "Versao invalida",
-        min_version: "1.0.0",
-        bundle_file: "release-invalid.zip",
-        bundle_checksum: "bundle-invalid",
-        release_date: "2026-03-21T14:00:00Z",
-        published_by: "publisher-1",
+        minVersion: "1.0.0",
+        bundleFile: "release-invalid.zip",
+        bundleChecksum: "bundle-invalid",
+        releaseDate: "2026-03-21T14:00:00Z",
+        publishedBy: "publisher-1",
         files: [{ target: "C:/SistemaX/app.exe", checksum: "checksum-app" }],
       }),
     ).toThrow(InvalidReleaseVersionError);
@@ -95,33 +98,33 @@ describe("db/releases", () => {
     releaseRepository.insertRelease({
       version: "2.9.0",
       description: "2.9.0",
-      min_version: "1.0.0",
-      bundle_file: "release-2.9.0.zip",
-      bundle_checksum: "bundle-290",
-      release_date: "2026-03-20T10:00:00Z",
-      published_by: "publisher-1",
+      minVersion: "1.0.0",
+      bundleFile: "release-2.9.0.zip",
+      bundleChecksum: "bundle-290",
+      releaseDate: "2026-03-20T10:00:00Z",
+      publishedBy: "publisher-1",
       files: [{ target: "C:/SistemaX/app.exe", checksum: "checksum-290" }],
     });
 
     releaseRepository.insertRelease({
       version: "2.10.0",
       description: "2.10.0",
-      min_version: "1.0.0",
-      bundle_file: "release-2.10.0.zip",
-      bundle_checksum: "bundle-2100",
-      release_date: "2026-03-22T10:00:00Z",
-      published_by: "publisher-1",
+      minVersion: "1.0.0",
+      bundleFile: "release-2.10.0.zip",
+      bundleChecksum: "bundle-2100",
+      releaseDate: "2026-03-22T10:00:00Z",
+      publishedBy: "publisher-1",
       files: [{ target: "C:/SistemaX/app.exe", checksum: "checksum-2100" }],
     });
 
     releaseRepository.insertRelease({
       version: "2.3.5",
       description: "2.3.5",
-      min_version: "1.0.0",
-      bundle_file: "release-2.3.5.zip",
-      bundle_checksum: "bundle-235",
-      release_date: "2026-03-19T10:00:00Z",
-      published_by: "publisher-1",
+      minVersion: "1.0.0",
+      bundleFile: "release-2.3.5.zip",
+      bundleChecksum: "bundle-235",
+      releaseDate: "2026-03-19T10:00:00Z",
+      publishedBy: "publisher-1",
       files: [{ target: "C:/SistemaX/app.exe", checksum: "checksum-235" }],
     });
 
@@ -139,16 +142,18 @@ describe("db/releases", () => {
     const payload = {
       version: "3.0.0",
       description: "3.0.0",
-      min_version: "1.0.0",
-      bundle_file: "release-3.0.0.zip",
-      bundle_checksum: "bundle-300",
-      release_date: "2026-03-25T10:00:00Z",
-      published_by: "publisher-1",
+      minVersion: "1.0.0",
+      bundleFile: "release-3.0.0.zip",
+      bundleChecksum: "bundle-300",
+      releaseDate: "2026-03-25T10:00:00Z",
+      publishedBy: "publisher-1",
       files: [{ target: "C:/SistemaX/app.exe", checksum: "checksum-300" }],
     };
 
     releaseRepository.insertRelease(payload);
-    expect(() => releaseRepository.insertRelease(payload)).toThrow();
+    expect(() => releaseRepository.insertRelease(payload)).toThrow(
+      ReleaseAlreadyExistsError,
+    );
   });
 
   test("insert_release rolls back release when file insert fails", () => {
@@ -158,11 +163,11 @@ describe("db/releases", () => {
       releaseRepository.insertRelease({
         version,
         description: "4.0.0",
-        min_version: "1.0.0",
-        bundle_file: "release-4.0.0.zip",
-        bundle_checksum: "bundle-400",
-        release_date: "2026-03-25T10:00:00Z",
-        published_by: "publisher-1",
+        minVersion: "1.0.0",
+        bundleFile: "release-4.0.0.zip",
+        bundleChecksum: "bundle-400",
+        releaseDate: "2026-03-25T10:00:00Z",
+        publishedBy: "publisher-1",
         files: [
           { target: "C:/SistemaX/app.exe", checksum: "checksum-400" },
           { target: "C:/SistemaX/config.json", checksum: null as unknown as string },
@@ -173,3 +178,4 @@ describe("db/releases", () => {
     expect(releaseRepository.getReleaseByVersion(version)).toBeNull();
   });
 });
+

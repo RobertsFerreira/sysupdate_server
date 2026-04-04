@@ -19,3 +19,18 @@ export class InvalidReleaseVersionError extends ReleaseDomainError {
     this.version = version;
   }
 }
+
+export class ReleaseAlreadyExistsError extends ReleaseDomainError {
+  readonly version: string;
+
+  constructor(version: string) {
+    super(`Release "${version}" already exists.`, "RELEASE_ALREADY_EXISTS");
+    this.version = version;
+  }
+}
+
+export class ReleasePersistenceError extends ReleaseDomainError {
+  constructor(message: string) {
+    super(message, "RELEASE_PERSISTENCE_ERROR");
+  }
+}

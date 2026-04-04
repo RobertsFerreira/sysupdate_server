@@ -2,7 +2,11 @@ import { eq } from 'drizzle-orm'
 import semver from 'semver'
 
 import { db, type DbClient } from '@/db/index'
-import { InvalidReleaseVersionError } from '@/db/errors/release.errors'
+import {
+  InvalidReleaseVersionError,
+  ReleaseAlreadyExistsError,
+  ReleasePersistenceError,
+} from '@/db/errors/release.errors'
 import { releaseFiles, releases } from '../db/schemas/releases.schema'
 import {
   ReleaseHeaderDTOSchema,
@@ -59,13 +63,28 @@ export function createReleaseRepository(db: DbClient) {
   }
 
   function insertRelease(release: InsertReleaseDTO): ReleaseHeaderDTO {
-    assertValidVersion(release.version)
+    const normalizedVersion = assertValidVersion(release.version)
+
+    const existingRelease = getReleaseByVersion(normalizedVersion)
+
+    if (existingRelease) {
+      throw new ReleaseAlreadyExistsError(normalizedVersion)
+    }
 
     return db.transaction((tx) => {
       const { files, ...releaseData } = release
-      const insertedRelease = tx.insert(releases).values(releaseData).returning().get()
+      const insertedRelease = tx
+        .insert(releases)
+        .values({
+          ...releaseData,
+          version: normalizedVersion,
+        })
+        .returning()
+        .get()
 
-      if (!insertedRelease) throw new Error('Failed to insert release')
+      if (!insertedRelease) {
+        throw new ReleasePersistenceError('Failed to insert release into database.')
+      }
 
       const currentFiles = files.map((file) => {
         return {
@@ -80,11 +99,12 @@ export function createReleaseRepository(db: DbClient) {
         .returning()
         .all()
       if (filesInserted.length !== currentFiles.length) {
-        throw new Error('Failed to insert release files')
+        throw new ReleasePersistenceError('Failed to insert release files.')
       }
 
       return ReleaseHeaderDTOSchema.parse(insertedRelease)
     })
+
   }
 
   function getLatestRelease(): ReleaseResponseDTO | null {

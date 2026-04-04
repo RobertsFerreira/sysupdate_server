@@ -13,7 +13,7 @@ const InsertReleaseDTOSchema = z.object({
 	minVersion: z.string().nullable().default(null),
 	bundleFile: z.string(),
 	bundleChecksum: z.string(),
-	releaseDate: z.coerce.date(),
+	releaseDate: z.iso.datetime(),
 	publishedBy: z.string(),
 	files: z.array(InsertReleaseFileDTOSchema),
 })
@@ -33,7 +33,7 @@ export const ReleaseHeaderDTOSchema = z.object({
 	minVersion: z.string().nullable().default(''),
 	bundleFile: z.string(),
 	bundleChecksum: z.string(),
-	releaseDate: z.coerce.date(),
+	releaseDate: z.iso.datetime(),
 	publishedBy: z.string(),
 })
 export type ReleaseHeaderDTO = z.infer<typeof ReleaseHeaderDTOSchema>
