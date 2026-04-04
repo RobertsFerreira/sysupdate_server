@@ -1,8 +1,9 @@
-import { eq } from "drizzle-orm";
-import semver from "semver";
+import { eq } from 'drizzle-orm'
+import semver from 'semver'
 
-import { InvalidReleaseVersionError } from "@/db/errors/release.errors";
-import { releaseFiles, releases } from "../db/schemas/releases.schema";
+import { db, type DbClient } from '@/db/index'
+import { InvalidReleaseVersionError } from '@/db/errors/release.errors'
+import { releaseFiles, releases } from '../db/schemas/releases.schema'
 import {
   ReleaseHeaderDTOSchema,
   toReleaseDTO,
@@ -10,31 +11,30 @@ import {
   type ReleaseHeaderDTO,
   type ReleaseResponseDTO,
   type ReleasesResponseDTO,
-} from "../dtos/releases.dto";
-import { db , type DbClient} from "@/db/index";
+} from '../dtos/releases.dto'
 
 export function createReleaseRepository(db: DbClient) {
   function selectAllReleases(): ReleasesResponseDTO {
     const rows = db
       .select()
       .from(releases)
-      .innerJoin(releaseFiles, eq(releaseFiles.release_id, releases.id))
-      .all();
+      .innerJoin(releaseFiles, eq(releaseFiles.releaseId, releases.id))
+      .all()
 
-    const grouped = new Map<number, ReleaseResponseDTO>();
+    const grouped = new Map<number, ReleaseResponseDTO>()
 
     for (const row of rows) {
-      const release = row.releases;
-      const releaseFile = row.release_files;
+      const release = row.releases
+      const releaseFile = row.release_files
 
-      const existing = grouped.get(release.id);
+      const existing = grouped.get(release.id)
       if (existing) {
         existing.files.push({
           id: releaseFile.id,
           target: releaseFile.target,
           checksum: releaseFile.checksum,
-        });
-        continue;
+        })
+        continue
       }
 
       grouped.set(release.id, {
@@ -46,80 +46,90 @@ export function createReleaseRepository(db: DbClient) {
             checksum: releaseFile.checksum,
           },
         ],
-      });
+      })
     }
 
-    return Array.from(grouped.values()).map(toReleaseDTO);
+    return Array.from(grouped.values()).map(toReleaseDTO)
   }
 
   function assertValidVersion(version: string): string {
-    const normalized = semver.valid(version);
-    if (!normalized) throw new InvalidReleaseVersionError(version);
-    return normalized;
+    const normalized = semver.valid(version)
+    if (!normalized) throw new InvalidReleaseVersionError(version)
+    return normalized
   }
 
   function insertRelease(release: InsertReleaseDTO): ReleaseHeaderDTO {
-    assertValidVersion(release.version);
+    assertValidVersion(release.version)
 
     return db.transaction((tx) => {
-      const { files, ...releaseData } = release;
-      const insertedRelease = tx.insert(releases).values(releaseData).returning().get();
+      const { files, ...releaseData } = release
+      const insertedRelease = tx.insert(releases).values(releaseData).returning().get()
 
-      if (!insertedRelease) throw new Error("Failed to insert release");
+      if (!insertedRelease) throw new Error('Failed to insert release')
 
       const currentFiles = files.map((file) => {
         return {
-          release_id: insertedRelease.id,
+          releaseId: insertedRelease.id,
           ...file,
-        };
-      });
+        }
+      })
 
-      const filesInserted = tx.insert(releaseFiles).values(currentFiles).returning().all();
-      if (filesInserted.length !== currentFiles.length) throw new Error("Failed to insert release files");
+      const filesInserted = tx
+        .insert(releaseFiles)
+        .values(currentFiles)
+        .returning()
+        .all()
+      if (filesInserted.length !== currentFiles.length) {
+        throw new Error('Failed to insert release files')
+      }
 
-      return ReleaseHeaderDTOSchema.parse(insertedRelease);
-    });
+      return ReleaseHeaderDTOSchema.parse(insertedRelease)
+    })
   }
 
   function getLatestRelease(): ReleaseResponseDTO | null {
-    const releasesList = selectAllReleases();
+    const releasesList = selectAllReleases()
 
     const validReleases = releasesList
       .filter((release) => semver.valid(release.version))
-      .sort((left, right) => semver.rcompare(left.version, right.version));
+      .sort((left, right) => semver.rcompare(left.version, right.version))
 
-    return validReleases.at(0) ?? null;
+    return validReleases.at(0) ?? null
   }
 
   function getReleaseByVersion(version: string): ReleaseResponseDTO | null {
-    const normalizedVersion = assertValidVersion(version);
-    const release = db.select().from(releases).where(eq(releases.version, normalizedVersion)).get();
+    const normalizedVersion = assertValidVersion(version)
+    const release = db
+      .select()
+      .from(releases)
+      .where(eq(releases.version, normalizedVersion))
+      .get()
 
-    if (!release) return null;
+    if (!release) return null
 
     const files = db
       .select()
       .from(releaseFiles)
-      .where(eq(releaseFiles.release_id, release.id))
+      .where(eq(releaseFiles.releaseId, release.id))
       .all()
       .map((file) => ({
         id: file.id,
         target: file.target,
         checksum: file.checksum,
-      }));
+      }))
 
     return toReleaseDTO({
       ...release,
       files,
-    });
+    })
   }
 
   return {
     insertRelease,
     getLatestRelease,
     getReleaseByVersion,
-  };
+  }
 }
 
-export type ReleaseRepository = ReturnType<typeof createReleaseRepository>;
-export const release_repository = createReleaseRepository(db);
+export type ReleaseRepository = ReturnType<typeof createReleaseRepository>
+export const releaseRepository = createReleaseRepository(db)
