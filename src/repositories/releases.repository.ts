@@ -65,6 +65,8 @@ export function createReleaseRepository(db: DbClient) {
   function insertRelease(release: InsertReleaseDTO): ReleaseHeaderDTO {
     const normalizedVersion = assertValidVersion(release.version)
 
+    //TODO: trata possivel duplicidade vinda de dupla request no mesmo tempo
+    //TODO: trata possivel insert vindo de install_id revogado
     const existingRelease = getReleaseByVersion(normalizedVersion)
 
     if (existingRelease) {

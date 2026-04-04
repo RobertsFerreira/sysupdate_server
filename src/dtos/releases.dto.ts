@@ -1,3 +1,4 @@
+import { InvalidReleaseError } from '@/db/errors/release.errors'
 import { z } from 'zod'
 
 const InsertReleaseFileDTOSchema = z.object({
@@ -15,7 +16,7 @@ const InsertReleaseDTOSchema = z.object({
 	bundleChecksum: z.string(),
 	releaseDate: z.iso.datetime(),
 	publishedBy: z.string(),
-	files: z.array(InsertReleaseFileDTOSchema),
+	files: z.array(InsertReleaseFileDTOSchema).min(1)
 })
 export type InsertReleaseDTO = z.infer<typeof InsertReleaseDTOSchema>
 
@@ -39,7 +40,7 @@ export const ReleaseHeaderDTOSchema = z.object({
 export type ReleaseHeaderDTO = z.infer<typeof ReleaseHeaderDTOSchema>
 
 const ReleaseResponseDTOSchema = ReleaseHeaderDTOSchema.extend({
-	files: z.array(ReleaseFileDTOSchema),
+	files: z.array(ReleaseFileDTOSchema).min(1),
 })
 
 export type ReleaseResponseDTO = z.infer<typeof ReleaseResponseDTOSchema>
