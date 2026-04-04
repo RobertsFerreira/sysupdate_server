@@ -100,14 +100,15 @@ Criar e inicializar o banco de dados SQLite do servidor com as tabelas `releases
 - [X] Tabela `releases` criada com colunas: `id`, `version` (UNIQUE), `description`, `min_version`, `bundle_file`, `bundle_checksum`, `release_date`, `published_by` (install_id de quem publicou — audit log), `created_at`
 - [X] Tabela `release_files` criada com colunas: `id`, `release_id` (FK → releases), `target`, `checksum`
 - [X] Tabela `installations` criada com colunas: `id`, `install_id` (TEXT UNIQUE), `public_key` (Ed25519 pública —**** nunca a privada), `role` (TEXT — `pending | consumer | publisher`), `label`, `registered_at`, `last_seen`, `revoked` (0=ativa, 1=revogada)
-- [X] Função `insertRelease(data)` implementada em `db/releases.ts`
+- [X] Função `insertRelease(data)` implementada em `repositories/releases.repository.ts`
 - [X] Função `getLatestRelease()` implementada — retorna a release com maior versão semver
 - [X] Função `getReleaseByVersion(version)` — retorna release específica ou `null`
-- [ ] Função `insertInstallation(installId, publicKey, label?)` implementada em `db/installations.ts` — role inicial sempre `pending`
-- [ ] Função `findInstallation(installId)` implementada — retorna instalação ativa (não revogada) ou `null`
-- [ ] Função `updateInstallationLastSeen(installId)` implementada
-- [ ] Função `setInstallationRole(installId, role)` implementada
-- [ ] Função `revokeInstallation(installId)` implementada — seta `revoked = 1`
+- [X] Função `insertInstallation(installId, publicKey, label?)` implementada em `repositories/installations.repository.ts` — role inicial sempre `pending`
+- [X] Função `findInstallation(installId)` implementada — retorna instalação ativa (não revogada) ou `null`
+- [X] Função `updateInstallationLastSeen(installId)` implementada
+- [X] Função `setInstallationRole(installId, role)` implementada
+- [X] Função `revokeInstallation(installId)` implementada — seta `revoked = 1`
+- [X] Service `registerInstallation(input)` implementado em `services/installations.service.ts` para orquestrar registro desacoplado de HTTP
 - [X] Banco recriado corretamente se `data/db/sysupdate.sqlite` não existir
 - [X] `data/db/sysupdate.sqlite` está no `.gitignore`
 
