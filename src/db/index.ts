@@ -6,6 +6,7 @@ import { env } from "@/config/env";
 
 export function createDb(databaseUrl: string) {
   const database = new Database(databaseUrl, { create: true });
+  database.run('PRAGMA foreign_keys=ON')
 
   return drizzle(database, {
     schema,
