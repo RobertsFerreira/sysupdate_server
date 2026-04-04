@@ -30,11 +30,7 @@ function assertInstallationRole(role: string): InstallationRole {
 
 export function createInstallationRepository(db: DbClient) {
 	function insertInstallation(input: RegisterInstallationInputDTO): InstallationDTO {
-		const existingInstallation = db
-			.select({ id: installations.id })
-			.from(installations)
-			.where(eq(installations.installId, input.installId))
-			.get()
+		const existingInstallation = findInstallation(input.installId)
 
 		if (existingInstallation) {
 			throw new InstallationAlreadyExistsError(input.installId)
