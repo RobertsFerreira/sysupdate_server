@@ -34,3 +34,15 @@ export class ReleasePersistenceError extends ReleaseDomainError {
     super(message, "RELEASE_PERSISTENCE_ERROR");
   }
 }
+
+export class ReleasePublisherNotAllowedError extends ReleaseDomainError {
+  readonly installId: string;
+
+  constructor(installId: string) {
+    super(
+      `Installation "${installId}" is not allowed to publish releases.`,
+      "RELEASE_PUBLISHER_NOT_ALLOWED"
+    );
+    this.installId = installId;
+  }
+}

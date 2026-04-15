@@ -1,9 +1,12 @@
 import { join } from "node:path";
+import { eq } from "drizzle-orm";
 import { createDb, type DbClient } from "@/db";
+import { installations } from "@/db/schemas/installations.schema";
 import { releaseFiles, releases } from "@/db/schemas/releases.schema";
 import {
   InvalidReleaseVersionError,
   ReleaseAlreadyExistsError,
+  ReleasePublisherNotAllowedError,
 } from "@/db/errors/release.errors";
 import {
   createReleaseRepository,
@@ -29,6 +32,16 @@ describe("db/releases", () => {
     db.transaction((tx) => {
       tx.delete(releaseFiles).run();
       tx.delete(releases).run();
+      tx.delete(installations).run();
+
+      tx.insert(installations)
+        .values({
+          installId: "publisher-1",
+          publicKey: "public-key-publisher-1",
+          role: "publisher",
+          revoked: 0,
+        })
+        .run();
     });
   });
 
@@ -177,5 +190,24 @@ describe("db/releases", () => {
 
     expect(releaseRepository.getReleaseByVersion(version)).toBeNull();
   });
-});
 
+  test("insert_release throws when publisher is revoked", () => {
+    db.update(installations)
+      .set({ revoked: 1 })
+      .where(eq(installations.installId, "publisher-1"))
+      .run();
+
+    expect(() =>
+      releaseRepository.insertRelease({
+        version: "5.0.0",
+        description: "5.0.0",
+        minVersion: "1.0.0",
+        bundleFile: "release-5.0.0.zip",
+        bundleChecksum: "bundle-500",
+        releaseDate: "2026-03-25T10:00:00Z",
+        publishedBy: "publisher-1",
+        files: [{ target: "C:/SistemaX/app.exe", checksum: "checksum-500" }],
+      }),
+    ).toThrow(ReleasePublisherNotAllowedError);
+  });
+});

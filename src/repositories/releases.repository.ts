@@ -6,7 +6,9 @@ import {
   InvalidReleaseVersionError,
   ReleaseAlreadyExistsError,
   ReleasePersistenceError,
+  ReleasePublisherNotAllowedError,
 } from '@/db/errors/release.errors'
+import { installations } from '@/db/schemas/installations.schema'
 import { releaseFiles, releases } from '../db/schemas/releases.schema'
 import {
   ReleaseHeaderDTOSchema,
@@ -18,6 +20,28 @@ import {
 } from '../dtos/releases.dto'
 
 export function createReleaseRepository(db: DbClient) {
+  function assertPublisherCanPublish(installId: string): void {
+    const installation = db
+      .select({
+        installId: installations.installId,
+        role: installations.role,
+        revoked: installations.revoked,
+      })
+      .from(installations)
+      .where(eq(installations.installId, installId))
+      .get()
+
+    if (!installation) {
+      throw new ReleasePublisherNotAllowedError(installId)
+    }
+
+    const hasPublisherRole = installation.role === 'publisher'
+    const isRevoked = installation.revoked === 1
+    if (isRevoked || !hasPublisherRole) {
+      throw new ReleasePublisherNotAllowedError(installId)
+    }
+  }
+
   function selectAllReleases(): ReleasesResponseDTO {
     const rows = db
       .select()
@@ -64,9 +88,8 @@ export function createReleaseRepository(db: DbClient) {
 
   function insertRelease(release: InsertReleaseDTO): ReleaseHeaderDTO {
     const normalizedVersion = assertValidVersion(release.version)
+    assertPublisherCanPublish(release.publishedBy)
 
-    //TODO: trata possivel duplicidade vinda de dupla request no mesmo tempo
-    //TODO: trata possivel insert vindo de install_id revogado
     const existingRelease = getReleaseByVersion(normalizedVersion)
 
     if (existingRelease) {
@@ -81,11 +104,13 @@ export function createReleaseRepository(db: DbClient) {
           ...releaseData,
           version: normalizedVersion,
         })
+        .onConflictDoNothing({ target: releases.version })
         .returning()
         .get()
 
+      // Covers race condition where another request inserted the same version first.
       if (!insertedRelease) {
-        throw new ReleasePersistenceError('Failed to insert release into database.')
+        throw new ReleaseAlreadyExistsError(normalizedVersion)
       }
 
       const currentFiles = files.map((file) => {
@@ -106,7 +131,6 @@ export function createReleaseRepository(db: DbClient) {
 
       return ReleaseHeaderDTOSchema.parse(insertedRelease)
     })
-
   }
 
   function getLatestRelease(): ReleaseResponseDTO | null {
