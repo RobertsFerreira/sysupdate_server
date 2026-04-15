@@ -1,4 +1,3 @@
-import { InvalidReleaseError } from '@/db/errors/release.errors'
 import { z } from 'zod'
 
 const InsertReleaseFileDTOSchema = z.object({
