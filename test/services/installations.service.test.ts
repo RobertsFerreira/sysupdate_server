@@ -1,15 +1,24 @@
+import {
+	afterAll,
+	beforeAll,
+	beforeEach,
+	describe,
+	expect,
+	test,
+} from 'bun:test'
 import { join } from 'node:path'
-
 import { createDb, type DbClient } from '@/db'
-import { InstallationAlreadyExistsError, InstallationNotFoundError } from '@/db/errors/installation.errors'
+import {
+	InstallationAlreadyExistsError,
+	InstallationNotFoundError,
+} from '@/db/errors/installation.errors'
 import { installations } from '@/db/schemas/installations.schema'
+import { RegisterInstallationInputDTOSchema } from '@/dtos/installations.dto'
 import { createInstallationRepository } from '@/repositories/installations.repository'
 import {
 	createInstallationsService,
 	type InstallationsService,
 } from '@/services/installations.service'
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:test'
-import { RegisterInstallationInputDTOSchema } from '@/dtos/installations.dto'
 
 describe('services/installations', () => {
 	let db: DbClient
@@ -50,7 +59,7 @@ describe('services/installations', () => {
 			RegisterInstallationInputDTOSchema.parse({
 				installId: 'service-install-dup',
 				publicKey: 'service-pub-key-1',
-			})
+			}),
 		)
 
 		expect(() =>
@@ -58,14 +67,16 @@ describe('services/installations', () => {
 				RegisterInstallationInputDTOSchema.parse({
 					installId: 'service-install-dup',
 					publicKey: 'service-pub-key-2',
-				})
+				}),
 			),
 		).toThrow(InstallationAlreadyExistsError)
 	})
 
 	test('update_installation_last_seen throws when installation does not exist', () => {
 		expect(() =>
-			installationsService.updateInstallationLastSeen('service-install-not-found'),
+			installationsService.updateInstallationLastSeen(
+				'service-install-not-found',
+			),
 		).toThrow(InstallationNotFoundError)
 	})
 

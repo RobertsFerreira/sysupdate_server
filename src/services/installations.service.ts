@@ -1,9 +1,8 @@
-import { type InstallationRole } from '@/db/schemas/installations.schema'
 import { InstallationNotFoundError } from '@/db/errors/installation.errors'
-import {
-	type InstallationDTO,
-	type RegisterInstallationInputDTO,
-	type SetInstallationRoleDTO,
+import type {
+	InstallationDTO,
+	RegisterInstallationInputDTO,
+	SetInstallationRoleDTO,
 } from '@/dtos/installations.dto'
 import {
 	type InstallationRepository,
@@ -11,7 +10,9 @@ import {
 } from '@/repositories/installations.repository'
 
 export function createInstallationsService(repository: InstallationRepository) {
-	function registerInstallation(input: RegisterInstallationInputDTO): InstallationDTO {
+	function registerInstallation(
+		input: RegisterInstallationInputDTO,
+	): InstallationDTO {
 		return repository.insertInstallation(input)
 	}
 
@@ -26,7 +27,9 @@ export function createInstallationsService(repository: InstallationRepository) {
 		}
 	}
 
-	function setInstallationRole(installation: SetInstallationRoleDTO): InstallationDTO {
+	function setInstallationRole(
+		installation: SetInstallationRoleDTO,
+	): InstallationDTO {
 		const updated = repository.setInstallationRole(installation)
 		if (!updated) {
 			throw new InstallationNotFoundError(installation.installId)
@@ -53,4 +56,6 @@ export function createInstallationsService(repository: InstallationRepository) {
 
 export type InstallationsService = ReturnType<typeof createInstallationsService>
 
-export const installationsService = createInstallationsService(installationRepository)
+export const installationsService = createInstallationsService(
+	installationRepository,
+)

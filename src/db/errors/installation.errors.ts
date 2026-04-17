@@ -30,7 +30,10 @@ export class InstallationNotFoundError extends InstallationDomainError {
 	readonly installId: string
 
 	constructor(installId: string) {
-		super(`Installation "${installId}" was not found.`, 'INSTALLATION_NOT_FOUND')
+		super(
+			`Installation "${installId}" was not found.`,
+			'INSTALLATION_NOT_FOUND',
+		)
 		this.installId = installId
 	}
 }

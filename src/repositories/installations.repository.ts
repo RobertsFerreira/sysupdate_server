@@ -1,14 +1,14 @@
 import { and, eq, sql } from 'drizzle-orm'
 
-import { db, type DbClient } from '@/db'
+import { type DbClient, db } from '@/db'
 import {
 	InstallationAlreadyExistsError,
 	InstallationPersistenceError,
 	InvalidInstallationRoleError,
 } from '@/db/errors/installation.errors'
 import {
-	installationRoleSchema,
 	type InstallationRole,
+	installationRoleSchema,
 	installations,
 } from '@/db/schemas/installations.schema'
 import {
@@ -29,7 +29,9 @@ function assertInstallationRole(role: string): InstallationRole {
 }
 
 export function createInstallationRepository(db: DbClient) {
-	function insertInstallation(input: RegisterInstallationInputDTO): InstallationDTO {
+	function insertInstallation(
+		input: RegisterInstallationInputDTO,
+	): InstallationDTO {
 		const existingInstallation = findInstallation(input.installId)
 
 		if (existingInstallation) {
@@ -49,7 +51,6 @@ export function createInstallationRepository(db: DbClient) {
 		}
 
 		return toInstallationDTO(insertedInstallation)
-
 	}
 
 	function findInstallation(installId: string): InstallationDTO | null {
@@ -84,7 +85,9 @@ export function createInstallationRepository(db: DbClient) {
 		return updateResult != null
 	}
 
-	function setInstallationRole(installation: SetInstallationRoleDTO): InstallationDTO | null {
+	function setInstallationRole(
+		installation: SetInstallationRoleDTO,
+	): InstallationDTO | null {
 		const validatedRole = assertInstallationRole(installation.role)
 
 		const updatedInstallation = db
@@ -97,7 +100,7 @@ export function createInstallationRepository(db: DbClient) {
 				),
 			)
 			.returning()
-			.get();
+			.get()
 
 		if (!updatedInstallation) return null
 		return toInstallationDTO(updatedInstallation)
@@ -128,5 +131,7 @@ export function createInstallationRepository(db: DbClient) {
 	}
 }
 
-export type InstallationRepository = ReturnType<typeof createInstallationRepository>
+export type InstallationRepository = ReturnType<
+	typeof createInstallationRepository
+>
 export const installationRepository = createInstallationRepository(db)

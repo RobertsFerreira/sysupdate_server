@@ -15,7 +15,7 @@ const InsertReleaseDTOSchema = z.object({
 	bundleChecksum: z.string(),
 	releaseDate: z.iso.datetime(),
 	publishedBy: z.string(),
-	files: z.array(InsertReleaseFileDTOSchema).min(1)
+	files: z.array(InsertReleaseFileDTOSchema).min(1),
 })
 export type InsertReleaseDTO = z.infer<typeof InsertReleaseDTOSchema>
 

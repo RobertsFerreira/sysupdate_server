@@ -1,5 +1,5 @@
-import { installationRoleSchema } from '@/db/schemas/installations.schema'
 import { z } from 'zod'
+import { installationRoleSchema } from '@/db/schemas/installations.schema'
 
 export const RegisterInstallationInputDTOSchema = z.object({
 	installId: z.string().trim().min(1),
@@ -25,10 +25,10 @@ const SetInstallationRoleDTOSchema = z.object({
 	installId: z.string().trim().min(1),
 	role: installationRoleSchema,
 })
-export type SetInstallationRoleDTO = z.infer<typeof SetInstallationRoleDTOSchema>
+export type SetInstallationRoleDTO = z.infer<
+	typeof SetInstallationRoleDTOSchema
+>
 
 export function toInstallationDTO(data: Record<string, unknown>) {
 	return InstallationDTOSchema.parse(data)
 }
-
-

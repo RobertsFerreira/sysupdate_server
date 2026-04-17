@@ -1,17 +1,20 @@
+import {
+	afterAll,
+	beforeAll,
+	beforeEach,
+	describe,
+	expect,
+	test,
+} from 'bun:test'
 import { join } from 'node:path'
-
 import { createDb, type DbClient } from '@/db'
 import { InstallationAlreadyExistsError } from '@/db/errors/installation.errors'
 import { installations } from '@/db/schemas/installations.schema'
+import { RegisterInstallationInputDTOSchema } from '@/dtos/installations.dto'
 import {
 	createInstallationRepository,
 	type InstallationRepository,
 } from '@/repositories/installations.repository'
-import {
-	RegisterInstallationInputDTOSchema
-} from '@/dtos/installations.dto'
-
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:test'
 
 describe('db/installations', () => {
 	let installationRepository: InstallationRepository
@@ -26,9 +29,13 @@ describe('db/installations', () => {
 		migrate(db, { migrationsFolder })
 	})
 
-	beforeEach(() => { db.delete(installations).run() })
+	beforeEach(() => {
+		db.delete(installations).run()
+	})
 
-	afterAll(() => { db.$client.close() })
+	afterAll(() => {
+		db.$client.close()
+	})
 
 	test('insert_installation persists role pending by default', () => {
 		const inserted = installationRepository.insertInstallation({
@@ -48,7 +55,7 @@ describe('db/installations', () => {
 			RegisterInstallationInputDTOSchema.parse({
 				installId: 'install-dup',
 				publicKey: 'pub-key-1',
-			})
+			}),
 		)
 
 		expect(() =>
@@ -56,7 +63,7 @@ describe('db/installations', () => {
 				RegisterInstallationInputDTOSchema.parse({
 					installId: 'install-dup',
 					publicKey: 'pub-key-2',
-				})
+				}),
 			),
 		).toThrow(InstallationAlreadyExistsError)
 	})
@@ -66,12 +73,14 @@ describe('db/installations', () => {
 			RegisterInstallationInputDTOSchema.parse({
 				installId: 'install-revoked',
 				publicKey: 'public-key',
-			})
+			}),
 		)
 		const revoked = installationRepository.revokeInstallation('install-revoked')
 
 		expect(revoked).toBeTrue()
-		expect(installationRepository.findInstallation('install-revoked')).toBeNull()
+		expect(
+			installationRepository.findInstallation('install-revoked'),
+		).toBeNull()
 	})
 
 	test('update_installation_last_seen updates only active installation', () => {
@@ -79,16 +88,16 @@ describe('db/installations', () => {
 			RegisterInstallationInputDTOSchema.parse({
 				installId: 'install-last-seen',
 				publicKey: 'public-key',
-			})
+			}),
 		)
 
-		const updated = installationRepository.updateInstallationLastSeen(
-			'install-last-seen',
-		)
+		const updated =
+			installationRepository.updateInstallationLastSeen('install-last-seen')
 
 		expect(updated).toBeTrue()
-		expect(installationRepository.findInstallation('install-last-seen')?.lastSeen)
-			.not.toBeNull()
+		expect(
+			installationRepository.findInstallation('install-last-seen')?.lastSeen,
+		).not.toBeNull()
 	})
 
 	test('set_installation_role updates role for active installation', () => {
@@ -96,7 +105,7 @@ describe('db/installations', () => {
 			RegisterInstallationInputDTOSchema.parse({
 				installId: 'install-role',
 				publicKey: 'public-key',
-			})
+			}),
 		)
 
 		const updated = installationRepository.setInstallationRole({
@@ -109,7 +118,6 @@ describe('db/installations', () => {
 	})
 
 	test('revoke_installation returns false when install_id does not exist', () => {
-		expect(installationRepository.revokeInstallation('not-found'))
-		.toBeFalse()
+		expect(installationRepository.revokeInstallation('not-found')).toBeFalse()
 	})
 })
