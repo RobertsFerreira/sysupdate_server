@@ -118,18 +118,18 @@ Criar e inicializar o banco de dados SQLite do servidor com as tabelas `releases
 
 ---
 
-#### TASK-005 — Implementar rota POST /connect e middleware de autenticação Ed25519 (stub)
+#### TASK-005 — Implementar rota POST /register e middleware de autenticação Ed25519 (stub)
 
 **Módulo:** Server / Auth
 
 **Descrição:**
-Implementar o modelo de autenticação por identidade Ed25519 por instalação, conforme as seções 6.1 e 7.1 do PRD. A rota `POST /connect` recebe `install_id` e `client_public_key`, registra a instalação com role `pending` e não requer autenticação prévia. O middleware `auth.ts` na Alpha é implementado como stub que passa as verificações de assinatura mas ainda valida `install_id` e `role`. A verificação criptográfica real é implementada na Fase 4.
+Implementar o modelo de autenticação por identidade Ed25519 por instalação, conforme as seções 6.1 e 7.1 do PRD. A rota `POST /register` recebe `install_id` e `client_public_key`, registra a instalação com role `pending` e não requer autenticação prévia. O middleware `auth.ts` na Alpha é implementado como stub que passa as verificações de assinatura mas ainda valida `install_id` e `role`. A verificação criptográfica real é implementada na Fase 4.
 
 **Critérios de Aceite:**
 
-- [ ] `POST /connect` recebe `{ install_id, client_public_key }` e registra a instalação no SQLite com role `pending`
-- [ ] `POST /connect` retorna `409` se o `install_id` já estiver registrado
-- [ ] `POST /connect` não requer autenticação prévia — rota aberta
+- [X] `POST /register` recebe `{ install_id, client_public_key }` e registra a instalação no SQLite com role `pending`
+- [X] `POST /register` retorna `409` se o `install_id` já estiver registrado
+- [X] `POST /register` não requer autenticação prévia — rota aberta
 - [ ] A chave pública do servidor nunca é exposta via rota HTTP (obtida manualmente via `sysupdate-server pubkey`)
 - [ ] Middleware `auth.ts` stub na Alpha: lê `install_id` do header, verifica se existe no banco e não está revogado — retorna `401` se não encontrado ou revogado
 - [ ] Middleware stub verifica `role` da instalação — retorna `403` se role insuficiente para a rota

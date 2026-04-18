@@ -2,7 +2,6 @@ import { and, eq, sql } from 'drizzle-orm'
 
 import { type DbClient, db } from '@/db'
 import {
-	InstallationAlreadyExistsError,
 	InstallationPersistenceError,
 	InvalidInstallationRoleError,
 } from '@/db/errors/installation.errors'
@@ -32,12 +31,6 @@ export function createInstallationRepository(db: DbClient) {
 	function insertInstallation(
 		input: RegisterInstallationInputDTO,
 	): InstallationDTO {
-		const existingInstallation = findInstallation(input.installId)
-
-		if (existingInstallation) {
-			throw new InstallationAlreadyExistsError(input.installId)
-		}
-
 		const insertedInstallation = db
 			.insert(installations)
 			.values(input)

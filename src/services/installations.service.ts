@@ -1,4 +1,7 @@
-import { InstallationNotFoundError } from '@/db/errors/installation.errors'
+import {
+	InstallationAlreadyExistsError,
+	InstallationNotFoundError,
+} from '@/db/errors/installation.errors'
 import type {
 	InstallationDTO,
 	RegisterInstallationInputDTO,
@@ -11,9 +14,12 @@ import {
 
 export function createInstallationsService(repository: InstallationRepository) {
 	function registerInstallation(
-		input: RegisterInstallationInputDTO,
+		installation: RegisterInstallationInputDTO,
 	): InstallationDTO {
-		return repository.insertInstallation(input)
+		if (findInstallation(installation.installId)) {
+			throw new InstallationAlreadyExistsError(installation.installId)
+		}
+		return repository.insertInstallation(installation)
 	}
 
 	function findInstallation(installId: string): InstallationDTO | null {

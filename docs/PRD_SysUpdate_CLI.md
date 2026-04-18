@@ -266,7 +266,7 @@ O servidor é um proxy HTTP em Bun que fica entre o cliente e o storage (FTP/S3)
 | `GET` | `/manifest/:version` | Nenhuma | Retorna os metadados de uma versão específica |
 | `GET` | `/bundle/:version` | Nenhuma | Stream do bundle `.zip` + `.sig` da versão solicitada |
 | `GET` | `/health` | Nenhuma | Healthcheck do servidor |
-| `POST` | `/connect` | HTTPS | Registra nova instalação — recebe `{ install_id, client_public_key }`. Chave do servidor nunca exposta via HTTP. |
+| `POST` | `/register` | HTTPS | Registra nova instalação — recebe `{ install_id, client_public_key }`. Chave do servidor nunca exposta via HTTP. |
 | `POST` | `/publish` | Assinatura Ed25519 + role `publisher` | Recebe bundle, valida assinatura, re-assina e publica |
 
 ### 6.2 Schema SQLite
@@ -356,7 +356,7 @@ sysupdate-server/
   │   │   ├── manifest.ts    # GET /manifest/:version
   │   │   ├── bundle.ts      # GET /bundle/:version
   │   │   ├── publish.ts     # POST /publish
-  │   │   └── connect.ts     # POST /connect
+  │   │   └── register.ts     # POST /register
   │   ├── middleware/
   │   │   └── auth.ts        # validação assinatura Ed25519 + role
   │   ├── db/
@@ -393,7 +393,7 @@ Ao instalar a CLI, um par de chaves **Ed25519** é gerado localmente na máquina
 sysupdate connect <SERVER_URL>
 
 → gera par Ed25519 local (privada nunca sai da máquina)
-→ HTTPS POST /connect { install_id, client_public_key }
+→ HTTPS POST /register { install_id, client_public_key }
 → servidor registra: role = pending
 
 # chave pública do servidor nunca transita via HTTP
@@ -615,7 +615,7 @@ sysupdate/
   │   │   │   ├── manifest.ts       # GET /manifest/:version
   │   │   │   ├── bundle.ts         # GET /bundle/:version
   │   │   │   ├── publish.ts        # POST /publish
-  │   │   │   └── connect.ts        # POST /connect
+  │   │   │   └── register.ts        # POST /register
   │   │   ├── middleware/
   │   │   │   └── auth.ts           # validação assinatura Ed25519 + role
   │   │   ├── db/
@@ -637,7 +637,7 @@ sysupdate/
 
 | Fase | Tag | Prazo Est. | Entregas |
 |---|---|---|---|
-| 1 | Alpha | Sem. 1–3 | Setup Bun + TypeScript, servidor HTTP (rotas manifest/bundle/publish/connect), FTP adapter, CLI base (pull/push/connect), Security Layer stub |
+| 1 | Alpha | Sem. 1–3 | Setup Bun + TypeScript, servidor HTTP (rotas manifest/bundle/publish/register), FTP adapter, CLI base (pull/push/connect), Security Layer stub |
 | 2 | Alpha | Sem. 4–5 | Backup, state file, checksum SHA-256, rollback, validação JSON Schema, rotação de backups |
 | 3 | Alpha | Sem. 6–7 | `--dry-run`, `--verbose`, testes E2E, proteção contra rollback malicioso, limpeza de `.bak` em background |
 | 4 | v1.0 | Sem. 8–9 | Security Layer Ed25519: geração de par no `connect`, comunicação assinada por request, roles, re-assinatura de bundles pelo servidor, chave pública embutida no build |
